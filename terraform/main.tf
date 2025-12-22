@@ -45,9 +45,18 @@ resource "yandex_iam_service_account" "sa" {
   folder_id   = var.folder_id
 }
 
-resource "yandex_resourcemanager_folder_iam_member" "sa-admin" {
+resource "yandex_resourcemanager_folder_iam_member" "sa-roles" {
+  for_each  = toset([
+    "k8s.admin",
+    "mdb.admin",
+    "vpc.admin",
+    "iam.serviceAccounts.user",
+    "container-registry.admin",
+    "lockbox.admin",
+    "dns.admin"
+  ])
   folder_id = var.folder_id
-  role      = "admin"
+  role      = each.key
   member    = "serviceAccount:${yandex_iam_service_account.sa.id}"
 }
 
@@ -184,13 +193,13 @@ resource "yandex_kubernetes_node_group" "k8s-node-group" {
     }
 
     scheduling_policy {
-      preemptible = true
+      preemptible = false
     }
   }
 
   scale_policy {
     fixed_scale {
-      size = 1
+      size = 2
     }
   }
 
@@ -200,9 +209,6 @@ resource "yandex_kubernetes_node_group" "k8s-node-group" {
     }
     location {
       zone = "ru-central1-b"
-    }
-    location {
-      zone = "ru-central1-d"
     }
   }
 }
@@ -235,6 +241,81 @@ resource "yandex_dns_recordset" "rs1" {
 
 # Network Load Balancer is managed by Kubernetes Service/Ingress automatically.
 # Manual creation in TF is not recommended for Managed K8s as it won't track dynamic nodes.
+
+resource "yandex_mdb_postgresql_cluster" "postgres-cluster" {
+  name        = "postgres-cluster"
+  environment = "PRESTABLE"
+  network_id  = yandex_vpc_network.k8s-network.id
+
+  config {
+    version = 16
+    resources {
+      resource_preset_id = "s2.micro"
+      disk_type_id       = "network-ssd"
+      disk_size          = 10
+    }
+  }
+
+  database {
+    name  = "fastapi_db"
+    owner = "db_user"
+  }
+
+  user {
+    name     = "db_user"
+    password = var.db_password
+  }
+
+  host {
+    zone      = "ru-central1-a"
+    subnet_id = yandex_vpc_subnet.k8s-subnet-a.id
+  }
+}
+
+variable "db_password" {
+  description = "Password for PostgreSQL user"
+  type        = string
+  sensitive   = true
+}
+
+resource "yandex_lockbox_secret" "app-secrets" {
+  name        = "app-secrets"
+  description = "Secrets for FastAPI application"
+}
+
+resource "yandex_lockbox_secret_version" "app-secrets-v1" {
+  secret_id = yandex_lockbox_secret.app-secrets.id
+  entries {
+    key        = "db_password"
+    text_value = var.db_password
+  }
+  entries {
+    key        = "fastapi_key"
+    text_value = var.fastapi_key
+  }
+}
+
+variable "fastapi_key" {
+  description = "Secret key for FastAPI application"
+  type        = string
+  sensitive   = true
+}
+
+output "lockbox_secret_id" {
+  value = yandex_lockbox_secret.app-secrets.id
+}
+
+output "db_host" {
+  value = yandex_mdb_postgresql_cluster.postgres-cluster.host[0].fqdn
+}
+
+output "db_name" {
+  value = "fastapi_db"
+}
+
+output "db_user" {
+  value = "db_user"
+}
 
 output "cluster_id" {
   value = yandex_kubernetes_cluster.k8s-cluster.id

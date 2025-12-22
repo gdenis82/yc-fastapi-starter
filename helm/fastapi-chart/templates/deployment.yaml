@@ -31,6 +31,24 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            - name: POSTGRES_SERVER
+              value: {{ .Values.postgresql.server | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgresql.user | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fastapi-chart.fullname" . }}-db-secret
+                  key: password
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.database | quote }}
+            - name: POSTGRES_PORT
+              value: {{ .Values.postgresql.port | quote }}
+            - name: FASTAPI_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fastapi-chart.fullname" . }}-app-secrets
+                  key: fastapi-key
           livenessProbe:
             httpGet:
               path: /health

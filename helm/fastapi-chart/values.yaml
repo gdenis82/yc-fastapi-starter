@@ -29,3 +29,12 @@ ingress:
         - tryout.site
 
 externalIp: ""
+
+postgresql:
+  server: ""
+  user: ""
+  password: ""
+  database: ""
+  port: "5432"
+
+fastapiKey: ""
