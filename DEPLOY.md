@@ -16,6 +16,9 @@
            * В разделе **Системные переменные** найдите `Path`, нажмите **Изменить** -> **Создать** -> введите `C:\terraform`.
         4. Перезапустите терминал.
 4.  **kubectl**: [Установка kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl-windows/).
+5.  **Helm**: [Установка Helm](https://helm.sh/docs/intro/install/).
+    *   **Для Windows (через Winget)**: `winget install Helm.Helm`
+    *   **Вручную**: Скачайте бинарный файл, распакуйте и добавьте в `PATH` (аналогично Terraform).
 
 ## 1. Подготовка инфраструктуры (Terraform)
 
@@ -66,7 +69,7 @@
 
 ## 2. Сборка и деплой (Автоматизировано)
 
-Для автоматизации подстановки `<REGISTRY_ID>` и `<CLUSTER_ID>` используйте скрипт `deploy.ps1`.
+Для автоматизации сборки образа и развертывания через **Helm** используйте скрипт `deploy.ps1`.
 
 1. Убедитесь, что `terraform apply` выполнен успешно.
 2. Запустите скрипт из корня проекта:
@@ -74,11 +77,13 @@
    .\deploy.ps1
    ```
 
-Скрипт сам:
-- Получит ID ресурсов из Terraform.
-- Соберит и запушит Docker-образ.
-- Подставит нужный ID в манифест Kubernetes.
-- Применит изменения в кластер.
+Скрипт выполняет следующие действия:
+- Получает ID ресурсов (Registry, Cluster, External IP) из Terraform.
+- Собирает и пушит Docker-образ в Yandex Container Registry.
+- Настраивает `kubectl` на ваш кластер.
+- Устанавливает/обновляет **Ingress NGINX** и **cert-manager**.
+- Выполняет `helm upgrade --install` для приложения.
+- Привязывает статический IP к Ingress-контроллеру.
 
 ---
 
@@ -95,19 +100,21 @@ docker build -t "cr.yandex/$REGISTRY_ID/fastapi-app:latest" .
 docker push "cr.yandex/$REGISTRY_ID/fastapi-app:latest"
 ```
 
-### 3a. Развертывание в Kubernetes
+### 3a. Развертывание через Helm
 ```powershell
-# Получаем ID
+# Получаем необходимые данные
 $CLUSTER_ID = (terraform -chdir=terraform output -raw cluster_id)
 $REGISTRY_ID = (terraform -chdir=terraform output -raw registry_id)
+$EXTERNAL_IP = (terraform -chdir=terraform output -raw external_ip)
 
 # Настройка kubectl
 yc managed-kubernetes cluster get-credentials --id $CLUSTER_ID --external
 
-# Деплой с подстановкой (временный файл)
-(Get-Content k8s/deployment.yaml).Replace('<REGISTRY_ID>', $REGISTRY_ID) | Set-Content k8s/deployment_patched.yaml
-kubectl apply -f k8s/deployment_patched.yaml
-Remove-Item k8s/deployment_patched.yaml
+# Деплой через Helm
+helm upgrade --install fastapi-release ./helm/fastapi-chart `
+    --set image.repository="cr.yandex/$REGISTRY_ID/fastapi-app" `
+    --set externalIp="$EXTERNAL_IP" `
+    --wait
 ```
 ### 4a. Дождитесь создания LoadBalancer и получите внешний IP:
    ```bash
@@ -136,7 +143,7 @@ kubectl describe certificate tryout-site-tls
 Для автоматизации SSL-сертификатов (Let's Encrypt) используются следующие компоненты:
 1. **Ingress NGINX**: Принимает внешний трафик и терминирует SSL.
 2. **cert-manager**: Автоматически заказывает и обновляет сертификаты в Let's Encrypt.
-3. **ClusterIssuer**: Конфигурация для cert-manager (файл `k8s/cert-manager-issuer.yaml`).
+3. **ClusterIssuer**: Конфигурация для cert-manager (шаблон `helm/fastapi-chart/templates/cert-manager-issuer.yaml`).
 
 Скрипт `deploy.ps1` автоматически устанавливает эти компоненты и настраивает ваш статический IP для Ingress-контроллера.
 

@@ -4,9 +4,7 @@ metadata:
   name: letsencrypt-prod
 spec:
   acme:
-    # URL ACME-сервера Let's Encrypt для рабочих сертификатов
     server: https://acme-v02.api.letsencrypt.org/directory
-    # Ваш email для уведомлений об истечении срока действия сертификата
     email: admin@tryout.site
     privateKeySecretRef:
       name: letsencrypt-prod

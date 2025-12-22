@@ -24,13 +24,16 @@ Write-Host "EXTERNAL_IP: $EXTERNAL_IP"
 
 Write-Host "`n--- Step 2: Build and Push Docker Image ---" -ForegroundColor Cyan
 yc container registry configure-docker
-$IMAGE_NAME = "cr.yandex/$REGISTRY_ID/fastapi-app:latest"
+$TAG = Get-Date -Format "yyyyMMdd-HHmmss"
+$IMAGE_NAME = "cr.yandex/$REGISTRY_ID/fastapi-app:$TAG"
+$LATEST_NAME = "cr.yandex/$REGISTRY_ID/fastapi-app:latest"
 
 Write-Host "Building image $IMAGE_NAME..."
-docker build -t $IMAGE_NAME .
+docker build -t $IMAGE_NAME -t $LATEST_NAME .
 
-Write-Host "Pushing image to Registry..."
+Write-Host "Pushing images to Registry..."
 docker push $IMAGE_NAME
+docker push $LATEST_NAME
 
 Write-Host "`n--- Step 3: Kubernetes Setup and Deploy ---" -ForegroundColor Cyan
 yc managed-kubernetes cluster get-credentials --id $CLUSTER_ID --external --force
@@ -44,23 +47,21 @@ kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/
 Write-Host "Waiting for cert-manager readiness..."
 Start-Sleep -Seconds 30
 
-Write-Host "Preparing manifests..."
-# Patching deployment
-$TIMESTAMP = Get-Date -Format "yyyyMMddHHmmss"
-$manifest = Get-Content k8s/deployment.yaml -Raw
-$manifest = $manifest.Replace('<REGISTRY_ID>', $REGISTRY_ID)
-# Add annotation to force rollout
-$annotation = "`n      annotations:`n        rollout-timestamp: `"$TIMESTAMP`""
-$manifest = $manifest -replace '(template:\s+metadata:)', "`$1$annotation"
+Write-Host "Fixing ClusterIssuer ownership for Helm (if exists)..."
+$issuerExists = kubectl get clusterissuer letsencrypt-prod -o name 2>$null
+if ($issuerExists) {
+    Write-Host "ClusterIssuer letsencrypt-prod found. Adding Helm ownership labels and annotations..."
+    kubectl label clusterissuer letsencrypt-prod app.kubernetes.io/managed-by=Helm --overwrite
+    kubectl annotate clusterissuer letsencrypt-prod meta.helm.sh/release-name=fastapi-release --overwrite
+    kubectl annotate clusterissuer letsencrypt-prod meta.helm.sh/release-namespace=default --overwrite
+}
 
-# Add imagePullPolicy: Always to ensure latest image is pulled
-$manifest = $manifest.Replace('image: cr.yandex/<REGISTRY_ID>/fastapi-app:latest', "image: cr.yandex/<REGISTRY_ID>/fastapi-app:latest`n        imagePullPolicy: Always")
-$manifest | Set-Content k8s/deployment_patched.yaml
-
-Write-Host "Applying manifests to cluster..."
-kubectl apply -f k8s/deployment_patched.yaml
-kubectl apply -f k8s/cert-manager-issuer.yaml
-kubectl apply -f k8s/ingress.yaml
+Write-Host "Deploying with Helm..."
+helm upgrade --install fastapi-release ./helm/fastapi-chart `
+    --set image.repository="cr.yandex/$REGISTRY_ID/fastapi-app" `
+    --set image.tag="$TAG" `
+    --set externalIp="$EXTERNAL_IP" `
+    --wait
 
 Write-Host "`n--- Configuring static IP for Ingress ---" -ForegroundColor Cyan
 Write-Host "Binding external IP $EXTERNAL_IP to Ingress controller LoadBalancer and configuring Yandex NLB..."
@@ -77,8 +78,6 @@ $patch = @{
 } | ConvertTo-Json -Depth 10 -Compress
 $patch = $patch.Replace('"', '\"')
 kubectl patch svc ingress-nginx-controller -n ingress-nginx -p $patch
-
-Remove-Item k8s/deployment_patched.yaml
 
 Write-Host "`n--- Done! ---" -ForegroundColor Green
 Write-Host "Check certificate status:"
