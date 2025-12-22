@@ -139,12 +139,6 @@ resource "yandex_vpc_security_group" "k8s-main-sg" {
 
   ingress {
     protocol          = "ANY"
-    description       = "Self assigned security group"
-    predefined_target = "self_assign"
-  }
-
-  ingress {
-    protocol          = "ANY"
     description       = "Allow all inside network"
     v4_cidr_blocks    = ["10.0.0.0/8"]
   }
@@ -219,9 +213,25 @@ resource "yandex_kubernetes_cluster" "k8s-cluster" {
     }
     public_ip = true
     security_group_ids = [yandex_vpc_security_group.k8s-main-sg.id]
+
+    master_logging {
+      enabled = true
+      folder_id = var.folder_id
+      kube_apiserver_enabled = true
+      cluster_autoscaler_enabled = true
+      events_enabled = true
+      audit_enabled = true
+    }
   }
 
   release_channel = "RAPID"
+
+  timeouts {
+    create = "60m"
+    update = "60m"
+    delete = "60m"
+  }
+
   depends_on = [
     yandex_resourcemanager_folder_iam_member.k8s-clusters-agent,
     yandex_resourcemanager_folder_iam_member.vpc-public-admin,
@@ -271,12 +281,10 @@ resource "yandex_kubernetes_node_group" "k8s-node-group" {
 
   allocation_policy {
     location {
-      zone      = "ru-central1-a"
-      subnet_id = yandex_vpc_subnet.k8s-subnet-a.id
+      zone = "ru-central1-a"
     }
     location {
-      zone      = "ru-central1-b"
-      subnet_id = yandex_vpc_subnet.k8s-subnet-b.id
+      zone = "ru-central1-b"
     }
   }
 }
@@ -326,6 +334,12 @@ resource "yandex_mdb_postgresql_cluster" "postgres-cluster" {
     version = 16
     postgresql_config = {
       max_connections = 100
+      log_min_duration_statement = 500
+      log_checkpoints = true
+      log_connections = true
+      log_disconnections = true
+      log_lock_waits = true
+      log_statement = "all"
     }
     resources {
       resource_preset_id = "s2.micro"
@@ -338,24 +352,27 @@ resource "yandex_mdb_postgresql_cluster" "postgres-cluster" {
     }
   }
 
-  database {
-    name  = "fastapi_db"
-    owner = "db_user"
-  }
-
-  user {
-    name     = "db_user"
-    password = var.db_password
-  }
-
   host {
     zone      = "ru-central1-a"
     subnet_id = yandex_vpc_subnet.k8s-subnet-a.id
   }
 
-  lifecycle {
-    ignore_changes = [user]
+  timeouts {
+    create = "30m"
+    delete = "30m"
   }
+}
+
+resource "yandex_mdb_postgresql_database" "fastapi_db" {
+  cluster_id = yandex_mdb_postgresql_cluster.postgres-cluster.id
+  name       = "fastapi_db"
+  owner      = yandex_mdb_postgresql_user.db_user.name
+}
+
+resource "yandex_mdb_postgresql_user" "db_user" {
+  cluster_id = yandex_mdb_postgresql_cluster.postgres-cluster.id
+  name       = "db_user"
+  password   = var.db_password
 }
 
 variable "db_password" {

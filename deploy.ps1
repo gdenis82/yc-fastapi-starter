@@ -26,20 +26,20 @@ try {
         Write-Host "Do you want to run 'terraform apply' to update the infrastructure and state? (y/n)" -ForegroundColor Yellow
         $choice = Read-Host
         if ($choice -eq 'y') {
-            # Check if we already have secrets in Lockbox. 
-            # If so, we can skip mandatory prompt because Terraform will ignore changes to them.
-            if (-not $LOCKBOX_ID) {
-                if (-not $env:TF_VAR_db_password) {
-                    $env:TF_VAR_db_password = [guid]::NewGuid().ToString()
-                    Write-Host "Generated random DB_PASSWORD: $env:TF_VAR_db_password" -ForegroundColor Gray
-                }
-                if (-not $env:TF_VAR_fastapi_key) {
-                    $env:TF_VAR_fastapi_key = [guid]::NewGuid().ToString()
-                    Write-Host "Generated random FASTAPI_KEY: $env:TF_VAR_fastapi_key" -ForegroundColor Gray
-                }
-            } else {
-                Write-Host "Lockbox secret ID found ($LOCKBOX_ID). Using existing secrets." -ForegroundColor Gray
+            # Ensure we have secrets in environment variables for Terraform
+            if (-not $env:TF_VAR_db_password) {
+                $env:TF_VAR_db_password = [guid]::NewGuid().ToString()
+                Write-Host "Set DB_PASSWORD in environment" -ForegroundColor Gray
             }
+            if (-not $env:TF_VAR_fastapi_key) {
+                $env:TF_VAR_fastapi_key = [guid]::NewGuid().ToString()
+                Write-Host "Set FASTAPI_KEY in environment" -ForegroundColor Gray
+            }
+            
+            if ($LOCKBOX_ID) {
+                Write-Host "Lockbox secret ID found ($LOCKBOX_ID). Using existing secrets container, but providing values for new version if needed." -ForegroundColor Gray
+            }
+            
             terraform apply -auto-approve
             
             # Re-fetch outputs after apply
@@ -167,6 +167,7 @@ helm upgrade --install fastapi-release ./helm/fastapi-chart `
     --set postgresql.database="$DB_NAME" `
     --set postgresql.user="$DB_USER" `
     --set domainName="$DOMAIN_NAME" `
+    --set logging.level="INFO" `
     --set ingress.className="nginx" `
     --timeout 10m `
     --wait `

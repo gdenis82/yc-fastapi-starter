@@ -49,6 +49,8 @@ spec:
                 secretKeyRef:
                   name: {{ include "fastapi-chart.fullname" . }}-app-secrets
                   key: fastapi-key
+            - name: LOG_LEVEL
+              value: {{ .Values.logging.level | quote }}
           livenessProbe:
             httpGet:
               path: /health

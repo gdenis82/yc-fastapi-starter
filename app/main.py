@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+import time
 from contextlib import asynccontextmanager
 from app.core.logger import logger
 from app.api.api import api_router
@@ -16,6 +17,18 @@ def create_app() -> FastAPI:
         title="FastAPI Kubernetes Project",
         lifespan=lifespan
     )
+    
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        start_time = time.time()
+        response = await call_next(request)
+        duration = time.time() - start_time
+        logger.info(
+            f"Method: {request.method} Path: {request.url.path} "
+            f"Status: {response.status_code} Duration: {duration:.4f}s"
+        )
+        return response
+
     app.include_router(api_router)
     return app
 

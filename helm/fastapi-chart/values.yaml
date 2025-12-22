@@ -39,3 +39,6 @@ postgresql:
   port: "5432"
 
 fastapiKey: ""
+
+logging:
+  level: "INFO"
