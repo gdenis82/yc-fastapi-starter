@@ -126,6 +126,71 @@ resource "yandex_resourcemanager_folder_iam_member" "compute-viewer" {
   member    = "serviceAccount:${yandex_iam_service_account.k8s-sa.id}"
 }
 
+resource "yandex_vpc_security_group" "k8s-main-sg" {
+  name        = "k8s-main-sg"
+  network_id  = yandex_vpc_network.k8s-network.id
+
+  ingress {
+    protocol       = "TCP"
+    description    = "Allow port 5432 for PostgreSQL"
+    v4_cidr_blocks = ["10.0.0.0/8"]
+    port           = 5432
+  }
+
+  ingress {
+    protocol          = "ANY"
+    description       = "Self assigned security group"
+    predefined_target = "self_assign"
+  }
+
+  ingress {
+    protocol          = "ANY"
+    description       = "Allow all inside network"
+    v4_cidr_blocks    = ["10.0.0.0/8"]
+  }
+
+  ingress {
+    protocol       = "TCP"
+    description    = "Allow HTTP"
+    v4_cidr_blocks = ["0.0.0.0/0"]
+    port           = 80
+  }
+
+  ingress {
+    protocol       = "TCP"
+    description    = "Allow HTTPS"
+    v4_cidr_blocks = ["0.0.0.0/0"]
+    port           = 443
+  }
+
+  ingress {
+    protocol          = "TCP"
+    description       = "Allow health checks from load balancer"
+    predefined_target = "loadbalancer_healthchecks"
+    port              = 80
+  }
+
+  ingress {
+    protocol       = "TCP"
+    description    = "Allow Kubernetes API"
+    v4_cidr_blocks = ["0.0.0.0/0"]
+    port           = 443
+  }
+
+  ingress {
+    protocol       = "TCP"
+    description    = "Allow nodes communication"
+    v4_cidr_blocks = ["0.0.0.0/0"]
+    port           = 6443
+  }
+
+  egress {
+    protocol       = "ANY"
+    description    = "Allow all outgoing"
+    v4_cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
 resource "yandex_kubernetes_cluster" "k8s-cluster" {
   name        = "k8s-cluster"
   network_id  = yandex_vpc_network.k8s-network.id
@@ -153,6 +218,7 @@ resource "yandex_kubernetes_cluster" "k8s-cluster" {
       }
     }
     public_ip = true
+    security_group_ids = [yandex_vpc_security_group.k8s-main-sg.id]
   }
 
   release_channel = "RAPID"
@@ -175,10 +241,10 @@ resource "yandex_kubernetes_node_group" "k8s-node-group" {
 
     network_interface {
       nat                = true
+      security_group_ids = [yandex_vpc_security_group.k8s-main-sg.id]
       subnet_ids         = [
         yandex_vpc_subnet.k8s-subnet-a.id,
-        yandex_vpc_subnet.k8s-subnet-b.id,
-        yandex_vpc_subnet.k8s-subnet-d.id
+        yandex_vpc_subnet.k8s-subnet-b.id
       ]
     }
 
@@ -205,10 +271,12 @@ resource "yandex_kubernetes_node_group" "k8s-node-group" {
 
   allocation_policy {
     location {
-      zone = "ru-central1-a"
+      zone      = "ru-central1-a"
+      subnet_id = yandex_vpc_subnet.k8s-subnet-a.id
     }
     location {
-      zone = "ru-central1-b"
+      zone      = "ru-central1-b"
+      subnet_id = yandex_vpc_subnet.k8s-subnet-b.id
     }
   }
 }
@@ -224,16 +292,22 @@ resource "yandex_vpc_address" "addr" {
   }
 }
 
+variable "domain_name" {
+  description = "Domain name for the application"
+  type        = string
+  default     = "tryout.site"
+}
+
 resource "yandex_dns_zone" "zone1" {
-  name        = "tryout-zone"
-  description = "DNS zone for tryout.site"
-  zone        = "tryout.site."
+  name        = "fastapi-zone"
+  description = "DNS zone for ${var.domain_name}"
+  zone        = "${var.domain_name}."
   public      = true
 }
 
 resource "yandex_dns_recordset" "rs1" {
   zone_id = yandex_dns_zone.zone1.id
-  name    = "tryout.site."
+  name    = "${var.domain_name}."
   type    = "A"
   ttl     = 600
   data    = [yandex_vpc_address.addr.external_ipv4_address[0].address]
@@ -246,13 +320,21 @@ resource "yandex_mdb_postgresql_cluster" "postgres-cluster" {
   name        = "postgres-cluster"
   environment = "PRESTABLE"
   network_id  = yandex_vpc_network.k8s-network.id
+  security_group_ids = [yandex_vpc_security_group.k8s-main-sg.id]
 
   config {
     version = 16
+    postgresql_config = {
+      max_connections = 100
+    }
     resources {
       resource_preset_id = "s2.micro"
       disk_type_id       = "network-ssd"
       disk_size          = 10
+    }
+    access {
+      web_sql       = true
+      data_transfer = true
     }
   }
 
@@ -270,12 +352,17 @@ resource "yandex_mdb_postgresql_cluster" "postgres-cluster" {
     zone      = "ru-central1-a"
     subnet_id = yandex_vpc_subnet.k8s-subnet-a.id
   }
+
+  lifecycle {
+    ignore_changes = [user]
+  }
 }
 
 variable "db_password" {
   description = "Password for PostgreSQL user"
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 resource "yandex_lockbox_secret" "app-secrets" {
@@ -293,12 +380,19 @@ resource "yandex_lockbox_secret_version" "app-secrets-v1" {
     key        = "fastapi_key"
     text_value = var.fastapi_key
   }
+
+  lifecycle {
+    ignore_changes = [
+      entries
+    ]
+  }
 }
 
 variable "fastapi_key" {
   description = "Secret key for FastAPI application"
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 output "lockbox_secret_id" {
@@ -327,4 +421,8 @@ output "registry_id" {
 
 output "external_ip" {
   value = yandex_vpc_address.addr.external_ipv4_address[0].address
+}
+
+output "domain_name" {
+  value = var.domain_name
 }

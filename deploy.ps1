@@ -9,34 +9,60 @@ if (-not (Test-Path "terraform")) {
 
 Push-Location terraform
 try {
-    Write-Host "Checking Terraform state..."
-    $state = terraform show -json | ConvertFrom-Json
-    if ($null -eq $state.values) {
-        Write-Host "Infrastructure not found. Do you want to run 'terraform apply'? (y/n)" -ForegroundColor Yellow
+    Write-Host "Checking Terraform outputs..."
+    $outputs = terraform output -json | ConvertFrom-Json
+    
+    $REGISTRY_ID = $outputs.registry_id.value
+    $CLUSTER_ID = $outputs.cluster_id.value
+    $EXTERNAL_IP = $outputs.external_ip.value
+    $DOMAIN_NAME = $outputs.domain_name.value
+    $DB_HOST = $outputs.db_host.value
+    $DB_NAME = $outputs.db_name.value
+    $DB_USER = $outputs.db_user.value
+    $LOCKBOX_ID = $outputs.lockbox_secret_id.value
+
+    if ($null -eq $REGISTRY_ID -or $null -eq $CLUSTER_ID -or $null -eq $EXTERNAL_IP -or $null -eq $DB_HOST -or $null -eq $LOCKBOX_ID) {
+        Write-Host "Some required Terraform outputs are missing." -ForegroundColor Yellow
+        Write-Host "Do you want to run 'terraform apply' to update the infrastructure and state? (y/n)" -ForegroundColor Yellow
         $choice = Read-Host
         if ($choice -eq 'y') {
-            # Ensure DB_PASSWORD and FASTAPI_KEY are available for Terraform
-            if (-not $env:TF_VAR_db_password) {
-                $env:TF_VAR_db_password = Read-Host "Enter DB_PASSWORD for PostgreSQL"
-            }
-            if (-not $env:TF_VAR_fastapi_key) {
-                $env:TF_VAR_fastapi_key = Read-Host "Enter FASTAPI_KEY for application"
+            # Check if we already have secrets in Lockbox. 
+            # If so, we can skip mandatory prompt because Terraform will ignore changes to them.
+            if (-not $LOCKBOX_ID) {
+                if (-not $env:TF_VAR_db_password) {
+                    $env:TF_VAR_db_password = [guid]::NewGuid().ToString()
+                    Write-Host "Generated random DB_PASSWORD: $env:TF_VAR_db_password" -ForegroundColor Gray
+                }
+                if (-not $env:TF_VAR_fastapi_key) {
+                    $env:TF_VAR_fastapi_key = [guid]::NewGuid().ToString()
+                    Write-Host "Generated random FASTAPI_KEY: $env:TF_VAR_fastapi_key" -ForegroundColor Gray
+                }
+            } else {
+                Write-Host "Lockbox secret ID found ($LOCKBOX_ID). Using existing secrets." -ForegroundColor Gray
             }
             terraform apply -auto-approve
+            
+            # Re-fetch outputs after apply
+            $outputs = terraform output -json | ConvertFrom-Json
+            $REGISTRY_ID = $outputs.registry_id.value
+            $CLUSTER_ID = $outputs.cluster_id.value
+            $EXTERNAL_IP = $outputs.external_ip.value
+            $DOMAIN_NAME = $outputs.domain_name.value
+            $DB_HOST = $outputs.db_host.value
+            $DB_NAME = $outputs.db_name.value
+            $DB_USER = $outputs.db_user.value
+            $LOCKBOX_ID = $outputs.lockbox_secret_id.value
         } else {
-            throw "Infrastructure must be provisioned before deployment."
+            throw "Infrastructure is incomplete. Please run 'terraform apply' manually."
         }
     }
 
-    $REGISTRY_ID = (terraform output -raw registry_id)
-    $CLUSTER_ID = (terraform output -raw cluster_id)
-    $EXTERNAL_IP = (terraform output -raw external_ip)
-    $DB_HOST = (terraform output -raw db_host)
-    $DB_NAME = (terraform output -raw db_name)
-    $DB_USER = (terraform output -raw db_user)
-    $LOCKBOX_ID = (terraform output -raw lockbox_secret_id)
+    if (-not $REGISTRY_ID -or -not $CLUSTER_ID -or -not $EXTERNAL_IP -or -not $DB_HOST -or -not $LOCKBOX_ID) {
+        throw "One or more required Terraform outputs are still missing after attempt to apply."
+    }
 } catch {
-    Write-Error "Failed to get outputs from Terraform. Ensure 'terraform apply' was successful."
+    Write-Error "Failed to get outputs from Terraform. Details: $_"
+    throw "Deployment aborted due to missing infrastructure data."
 } finally {
     Pop-Location
 }
@@ -81,14 +107,14 @@ for ($i=0; $i -lt 10; $i++) {
 
 Write-Host "Patching ingress-nginx-controller with static IP $EXTERNAL_IP..."
 $patch = @{
-    spec = @{
-        loadBalancerIP = $EXTERNAL_IP
-        externalTrafficPolicy = "Local"
-    }
     metadata = @{
         annotations = @{
+            "service.beta.kubernetes.io/yandex-cloud-load-balancer-external-ip" = $EXTERNAL_IP
             "yandex.cloud/load-balancer-type" = "external"
         }
+    }
+    spec = @{
+        externalTrafficPolicy = "Local"
     }
 } | ConvertTo-Json -Depth 10 -Compress
 $patch = $patch.Replace('"', '\"')
@@ -111,7 +137,8 @@ if ($issuerExists) {
 
 # Fetch secrets from Yandex Lockbox and create Kubernetes Secrets directly
 Write-Host "Fetching secrets from Yandex Lockbox and updating Kubernetes Secrets..."
-$payload = yc lockbox payload get --id $LOCKBOX_ID --format json | ConvertFrom-Json
+# Use positional argument for secret ID to avoid the --id conflict if it arises, and ensure it's quoted
+$payload = yc lockbox payload get $LOCKBOX_ID --format json | ConvertFrom-Json
 $DB_PASSWORD_FROM_LOCKBOX = ($payload.entries | Where-Object { $_.key -eq "db_password" }).text_value
 $FASTAPI_KEY_FROM_LOCKBOX = ($payload.entries | Where-Object { $_.key -eq "fastapi_key" }).text_value
 
@@ -120,11 +147,14 @@ if (-not $FASTAPI_KEY_FROM_LOCKBOX) { throw "Failed to fetch FASTAPI_KEY from Lo
 
 # Create/Update secrets via kubectl to avoid passing them as helm arguments
 # We use --dry-run=client -o yaml | kubectl apply to be idempotent and silent about values
-kubectl create secret opaque fastapi-release-db-secret `
+$CHART_NAME = "fastapi-chart"
+$FULL_RELEASE_NAME = "fastapi-release-$CHART_NAME"
+
+kubectl create secret generic "$FULL_RELEASE_NAME-db-secret" `
     --from-literal=password="$DB_PASSWORD_FROM_LOCKBOX" `
     --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl create secret opaque fastapi-release-app-secrets `
+kubectl create secret generic "$FULL_RELEASE_NAME-app-secrets" `
     --from-literal=fastapi-key="$FASTAPI_KEY_FROM_LOCKBOX" `
     --dry-run=client -o yaml | kubectl apply -f -
 
@@ -136,13 +166,41 @@ helm upgrade --install fastapi-release ./helm/fastapi-chart `
     --set postgresql.server="$DB_HOST" `
     --set postgresql.database="$DB_NAME" `
     --set postgresql.user="$DB_USER" `
-    --wait
+    --set domainName="$DOMAIN_NAME" `
+    --set ingress.className="nginx" `
+    --timeout 10m `
+    --wait `
+    --wait-for-jobs
 
 # Ingress NGINX and its IP are now handled during setup step
 # No need to patch again here unless we want to be sure
 # kubectl patch svc ingress-nginx-controller -n ingress-nginx -p $patch
 
-Write-Host "`n--- Done! ---" -ForegroundColor Green
+Write-Host "`n--- Diagnostics ---" -ForegroundColor Cyan
+Write-Host "Waiting for Ingress to get IP..."
+$ingress_ip = ""
+for ($i = 0; $i -lt 12; $i++) {
+    $ingress_ip = kubectl get ingress fastapi-release-fastapi-chart -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>$null
+    if ($ingress_ip) {
+        Write-Host "Ingress IP: $ingress_ip" -ForegroundColor Green
+        break
+    }
+    Write-Host "." -NoNewline
+    Start-Sleep -Seconds 10
+}
+Write-Host ""
+
+if (-not $ingress_ip) {
+    Write-Warning "Ingress still has no IP or not found. Check 'kubectl get ingress' and 'kubectl describe svc -n ingress-nginx ingress-nginx-controller'"
+}
+
+Write-Host "`n--- Final Status ---" -ForegroundColor Green
 Write-Host "Check certificate status:"
-Write-Host "kubectl get certificate tryout-site-tls"
-Write-Host "Domain will be available at: https://tryout.site"
+if ($DOMAIN_NAME) {
+    $certName = ($DOMAIN_NAME.Replace('.', '-')) + "-tls"
+    Write-Host "kubectl get certificate $certName"
+    kubectl get certificate $certName -o wide 2>$null
+    Write-Host "Domain will be available at: https://$DOMAIN_NAME"
+} else {
+    Write-Host "Domain not set. Check Ingress status for IP address."
+}
