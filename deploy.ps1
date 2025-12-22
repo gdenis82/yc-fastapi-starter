@@ -127,7 +127,7 @@ Write-Host "Waiting for cert-manager readiness..."
 Start-Sleep -Seconds 30
 
 Write-Host "Fixing ClusterIssuer ownership for Helm (if exists)..."
-$issuerExists = kubectl get clusterissuer letsencrypt-prod -o name 2>$null
+$issuerExists = kubectl get clusterissuer letsencrypt-prod -o name --ignore-not-found
 if ($issuerExists) {
     Write-Host "ClusterIssuer letsencrypt-prod found. Adding Helm ownership labels and annotations..."
     kubectl label clusterissuer letsencrypt-prod app.kubernetes.io/managed-by=Helm --overwrite

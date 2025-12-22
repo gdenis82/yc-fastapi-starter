@@ -47,7 +47,7 @@ resource "yandex_iam_service_account" "sa" {
 
 resource "yandex_resourcemanager_folder_iam_member" "sa-roles" {
   for_each  = toset([
-    "k8s.admin",
+    "admin",
     "mdb.admin",
     "vpc.admin",
     "iam.serviceAccounts.user",
@@ -88,6 +88,7 @@ resource "yandex_vpc_subnet" "k8s-subnet-d" {
 resource "yandex_iam_service_account" "k8s-sa" {
   name        = "k8s-sa"
   description = "K8s service account"
+  folder_id   = var.folder_id
 }
 
 resource "yandex_resourcemanager_folder_iam_member" "k8s-clusters-agent" {
@@ -126,21 +127,41 @@ resource "yandex_resourcemanager_folder_iam_member" "compute-viewer" {
   member    = "serviceAccount:${yandex_iam_service_account.k8s-sa.id}"
 }
 
+resource "yandex_resourcemanager_folder_iam_member" "logging-writer" {
+  folder_id = var.folder_id
+  role      = "logging.writer"
+  member    = "serviceAccount:${yandex_iam_service_account.k8s-sa.id}"
+}
+
 resource "yandex_vpc_security_group" "k8s-main-sg" {
   name        = "k8s-main-sg"
   network_id  = yandex_vpc_network.k8s-network.id
 
   ingress {
-    protocol       = "TCP"
-    description    = "Allow port 5432 for PostgreSQL"
-    v4_cidr_blocks = ["10.0.0.0/8"]
-    port           = 5432
+    protocol          = "ANY"
+    description       = "Allow all inside security group"
+    predefined_target = "self_security_group"
+    from_port         = 0
+    to_port           = 65535
   }
 
   ingress {
-    protocol          = "ANY"
-    description       = "Allow all inside network"
-    v4_cidr_blocks    = ["10.0.0.0/8"]
+    protocol       = "ANY"
+    description    = "Allow all inside network"
+    v4_cidr_blocks = ["10.0.0.0/8", "10.96.0.0/16", "10.112.0.0/16"]
+  }
+
+  ingress {
+    protocol       = "ICMP"
+    description    = "Allow ICMP for MTU discovery"
+    v4_cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    protocol       = "TCP"
+    description    = "Allow port 5432 for PostgreSQL"
+    v4_cidr_blocks = ["10.0.0.0/8", "10.96.0.0/16", "10.112.0.0/16"]
+    port           = 5432
   }
 
   ingress {
@@ -178,6 +199,13 @@ resource "yandex_vpc_security_group" "k8s-main-sg" {
     port           = 6443
   }
 
+  ingress {
+    protocol       = "TCP"
+    description    = "Allow SSH"
+    v4_cidr_blocks = ["0.0.0.0/0"]
+    port           = 22
+  }
+
   egress {
     protocol       = "ANY"
     description    = "Allow all outgoing"
@@ -193,23 +221,9 @@ resource "yandex_kubernetes_cluster" "k8s-cluster" {
 
   master {
     version = "1.31"
-    regional {
-      region = "ru-central1"
-
-      location {
-        zone      = yandex_vpc_subnet.k8s-subnet-a.zone
-        subnet_id = yandex_vpc_subnet.k8s-subnet-a.id
-      }
-
-      location {
-        zone      = yandex_vpc_subnet.k8s-subnet-b.zone
-        subnet_id = yandex_vpc_subnet.k8s-subnet-b.id
-      }
-
-      location {
-        zone      = yandex_vpc_subnet.k8s-subnet-d.zone
-        subnet_id = yandex_vpc_subnet.k8s-subnet-d.id
-      }
+    zonal {
+      zone      = yandex_vpc_subnet.k8s-subnet-a.zone
+      subnet_id = yandex_vpc_subnet.k8s-subnet-a.id
     }
     public_ip = true
     security_group_ids = [yandex_vpc_security_group.k8s-main-sg.id]
@@ -237,7 +251,8 @@ resource "yandex_kubernetes_cluster" "k8s-cluster" {
     yandex_resourcemanager_folder_iam_member.vpc-public-admin,
     yandex_resourcemanager_folder_iam_member.images-puller,
     yandex_resourcemanager_folder_iam_member.load-balancer-admin,
-    yandex_resourcemanager_folder_iam_member.compute-viewer
+    yandex_resourcemanager_folder_iam_member.compute-viewer,
+    yandex_resourcemanager_folder_iam_member.logging-writer
   ]
 }
 
@@ -253,8 +268,7 @@ resource "yandex_kubernetes_node_group" "k8s-node-group" {
       nat                = true
       security_group_ids = [yandex_vpc_security_group.k8s-main-sg.id]
       subnet_ids         = [
-        yandex_vpc_subnet.k8s-subnet-a.id,
-        yandex_vpc_subnet.k8s-subnet-b.id
+        yandex_vpc_subnet.k8s-subnet-a.id
       ]
     }
 
@@ -282,9 +296,6 @@ resource "yandex_kubernetes_node_group" "k8s-node-group" {
   allocation_policy {
     location {
       zone = "ru-central1-a"
-    }
-    location {
-      zone = "ru-central1-b"
     }
   }
 }
@@ -339,7 +350,6 @@ resource "yandex_mdb_postgresql_cluster" "postgres-cluster" {
       log_connections = true
       log_disconnections = true
       log_lock_waits = true
-      log_statement = "all"
     }
     resources {
       resource_preset_id = "s2.micro"
