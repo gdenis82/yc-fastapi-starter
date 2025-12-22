@@ -30,10 +30,13 @@ $LATEST_NAME = "cr.yandex/$REGISTRY_ID/fastapi-app:latest"
 
 Write-Host "Building image $IMAGE_NAME..."
 docker build -t $IMAGE_NAME -t $LATEST_NAME .
+if ($LASTEXITCODE -ne 0) { throw "Docker build failed" }
 
 Write-Host "Pushing images to Registry..."
 docker push $IMAGE_NAME
+if ($LASTEXITCODE -ne 0) { throw "Docker push failed for $IMAGE_NAME" }
 docker push $LATEST_NAME
+if ($LASTEXITCODE -ne 0) { throw "Docker push failed for $LATEST_NAME" }
 
 Write-Host "`n--- Step 3: Kubernetes Setup and Deploy ---" -ForegroundColor Cyan
 yc managed-kubernetes cluster get-credentials --id $CLUSTER_ID --external --force

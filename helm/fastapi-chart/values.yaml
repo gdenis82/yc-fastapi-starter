@@ -6,6 +6,8 @@ image:
   pullPolicy: Always
   tag: "latest"
 
+imagePullSecrets: []
+
 service:
   type: ClusterIP
   port: 80

@@ -1,7 +1,7 @@
 import logging
 import sys
 
-# 📝 Настраиваем логгер приложения
+# Настраиваем логгер приложения
 logger = logging.getLogger("app")
 logger.setLevel(logging.INFO)
 
