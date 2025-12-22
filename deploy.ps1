@@ -71,6 +71,9 @@ Write-Host "REGISTRY_ID: $REGISTRY_ID"
 Write-Host "CLUSTER_ID: $CLUSTER_ID"
 Write-Host "EXTERNAL_IP: $EXTERNAL_IP"
 
+$DOMAIN_CLEAN = $DOMAIN_NAME.TrimEnd('.')
+Write-Host "Domain (cleaned): $DOMAIN_CLEAN"
+
 Write-Host "`n--- Step 2: Build and Push Docker Image ---" -ForegroundColor Cyan
 yc container registry configure-docker
 $TAG = Get-Date -Format "yyyyMMdd-HHmmss"
@@ -90,38 +93,23 @@ if ($LASTEXITCODE -ne 0) { throw "Docker push failed for $LATEST_NAME" }
 Write-Host "`n--- Step 3: Kubernetes Setup and Deploy ---" -ForegroundColor Cyan
 yc managed-kubernetes cluster get-credentials --id $CLUSTER_ID --external --force
 
-Write-Host "Installing Ingress NGINX (if not installed)..."
-# Pass the static IP to the ingress-nginx service directly during installation if possible
-# However, the standard manifest doesn't know our $EXTERNAL_IP.
-# We will use a more reliable way: check if it's already patched or use a helm chart for ingress-nginx.
-# But keeping the user's flow, we'll ensure the patch is done efficiently.
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+Write-Host "Installing Ingress NGINX (via Helm)..."
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx 2>$null
+helm repo update ingress-nginx
 
-# Wait for the service to be created so we can patch it before it gets a random IP if possible
-Write-Host "Waiting for ingress-nginx-controller service..."
-for ($i=0; $i -lt 10; $i++) {
-    $svc = kubectl get svc ingress-nginx-controller -n ingress-nginx --ignore-not-found
-    if ($svc) { break }
-    Start-Sleep -Seconds 2
-}
-
-Write-Host "Patching ingress-nginx-controller with static IP $EXTERNAL_IP..."
-$patch = @{
-    metadata = @{
-        annotations = @{
-            "service.beta.kubernetes.io/yandex-cloud-load-balancer-external-ip" = $EXTERNAL_IP
-            "yandex.cloud/load-balancer-type" = "external"
-        }
-    }
-    spec = @{
-        externalTrafficPolicy = "Local"
-    }
-} | ConvertTo-Json -Depth 10 -Compress
-$patch = $patch.Replace('"', '\"')
-kubectl patch svc ingress-nginx-controller -n ingress-nginx -p $patch
+helm upgrade --install ingress-nginx ingress-nginx `
+  --repo https://kubernetes.github.io/ingress-nginx `
+  --namespace ingress-nginx --create-namespace `
+  --set controller.service.type=LoadBalancer `
+  --set controller.service.loadBalancerIP="$EXTERNAL_IP" `
+  --set controller.service.annotations."service\.beta\.kubernetes\.io/yandex-cloud-load-balancer-type"=external `
+  --set controller.service.externalTrafficPolicy=Local `
+  --wait
 
 Write-Host "Installing cert-manager (if not installed)..."
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.2/cert-manager.yaml
+
+$RELEASE_NAME = "fastapi"
 
 Write-Host "Waiting for cert-manager readiness..."
 Start-Sleep -Seconds 30
@@ -131,7 +119,7 @@ $issuerExists = kubectl get clusterissuer letsencrypt-prod -o name --ignore-not-
 if ($issuerExists) {
     Write-Host "ClusterIssuer letsencrypt-prod found. Adding Helm ownership labels and annotations..."
     kubectl label clusterissuer letsencrypt-prod app.kubernetes.io/managed-by=Helm --overwrite
-    kubectl annotate clusterissuer letsencrypt-prod meta.helm.sh/release-name=fastapi-release --overwrite
+    kubectl annotate clusterissuer letsencrypt-prod meta.helm.sh/release-name=$RELEASE_NAME --overwrite
     kubectl annotate clusterissuer letsencrypt-prod meta.helm.sh/release-namespace=default --overwrite
 }
 
@@ -147,29 +135,29 @@ if (-not $FASTAPI_KEY_FROM_LOCKBOX) { throw "Failed to fetch FASTAPI_KEY from Lo
 
 # Create/Update secrets via kubectl to avoid passing them as helm arguments
 # We use --dry-run=client -o yaml | kubectl apply to be idempotent and silent about values
-$CHART_NAME = "fastapi-chart"
-$FULL_RELEASE_NAME = "fastapi-release-$CHART_NAME"
+$RELEASE_NAME = "fastapi"
 
-kubectl create secret generic "$FULL_RELEASE_NAME-db-secret" `
+kubectl create secret generic "$RELEASE_NAME-db-secret" `
     --from-literal=password="$DB_PASSWORD_FROM_LOCKBOX" `
     --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl create secret generic "$FULL_RELEASE_NAME-app-secrets" `
+kubectl create secret generic "$RELEASE_NAME-app-secrets" `
     --from-literal=fastapi-key="$FASTAPI_KEY_FROM_LOCKBOX" `
     --dry-run=client -o yaml | kubectl apply -f -
 
-Write-Host "Deploying with Helm..."
-helm upgrade --install fastapi-release ./helm/fastapi-chart `
+Write-Host "Deploying with Helm..." -ForegroundColor Cyan
+helm upgrade --install $RELEASE_NAME ./helm/fastapi-chart `
+    --set fullnameOverride=$RELEASE_NAME `
     --set image.repository="cr.yandex/$REGISTRY_ID/fastapi-app" `
     --set image.tag="$TAG" `
     --set externalIp="$EXTERNAL_IP" `
     --set postgresql.server="$DB_HOST" `
     --set postgresql.database="$DB_NAME" `
     --set postgresql.user="$DB_USER" `
-    --set domainName="$DOMAIN_NAME" `
+    --set domainName="$DOMAIN_CLEAN" `
     --set logging.level="INFO" `
     --set ingress.className="nginx" `
-    --timeout 10m `
+    --timeout 5m `
     --wait `
     --wait-for-jobs
 
@@ -181,7 +169,7 @@ Write-Host "`n--- Diagnostics ---" -ForegroundColor Cyan
 Write-Host "Waiting for Ingress to get IP..."
 $ingress_ip = ""
 for ($i = 0; $i -lt 12; $i++) {
-    $ingress_ip = kubectl get ingress fastapi-release-fastapi-chart -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>$null
+    $ingress_ip = kubectl get ingress $RELEASE_NAME -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>$null
     if ($ingress_ip) {
         Write-Host "Ingress IP: $ingress_ip" -ForegroundColor Green
         break
@@ -197,11 +185,11 @@ if (-not $ingress_ip) {
 
 Write-Host "`n--- Final Status ---" -ForegroundColor Green
 Write-Host "Check certificate status:"
-if ($DOMAIN_NAME) {
-    $certName = ($DOMAIN_NAME.Replace('.', '-')) + "-tls"
+if ($DOMAIN_CLEAN) {
+    $certName = ($DOMAIN_CLEAN.Replace('.', '-')) + "-tls"
     Write-Host "kubectl get certificate $certName"
     kubectl get certificate $certName -o wide 2>$null
-    Write-Host "Domain will be available at: https://$DOMAIN_NAME"
+    Write-Host "Domain will be available at: https://$DOMAIN_CLEAN"
 } else {
     Write-Host "Domain not set. Check Ingress status for IP address."
 }

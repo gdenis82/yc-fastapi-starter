@@ -2,17 +2,9 @@
 
 set -e
 
-echo "Checking DB connectivity..."
-# Try to connect to DB port with timeout
-for i in $(seq 1 30); do
-  if nc -zv $POSTGRES_SERVER $POSTGRES_PORT; then
-    echo "DB is up!"
-    break
-  else
-    echo "Waiting for DB ($POSTGRES_SERVER:$POSTGRES_PORT)..."
-    sleep 2
-  fi
-done
+echo "Checking DB connectivity to $POSTGRES_SERVER:$POSTGRES_PORT..."
+# Try to resolve hostname for diagnostic
+python -c "import socket; print(f'Resolved $POSTGRES_SERVER to {socket.gethostbyname(\"$POSTGRES_SERVER\")}')" || echo "Failed to resolve $POSTGRES_SERVER"
 
 echo "Running migrations..."
 alembic upgrade head

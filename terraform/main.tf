@@ -133,6 +133,12 @@ resource "yandex_resourcemanager_folder_iam_member" "logging-writer" {
   member    = "serviceAccount:${yandex_iam_service_account.k8s-sa.id}"
 }
 
+resource "yandex_resourcemanager_folder_iam_member" "k8s-sa-lockbox-payload" {
+  folder_id = var.folder_id
+  role      = "lockbox.payloadViewer"
+  member    = "serviceAccount:${yandex_iam_service_account.k8s-sa.id}"
+}
+
 resource "yandex_vpc_security_group" "k8s-main-sg" {
   name        = "k8s-main-sg"
   network_id  = yandex_vpc_network.k8s-network.id
@@ -148,7 +154,7 @@ resource "yandex_vpc_security_group" "k8s-main-sg" {
   ingress {
     protocol       = "ANY"
     description    = "Allow all inside network"
-    v4_cidr_blocks = ["10.0.0.0/8", "10.96.0.0/16", "10.112.0.0/16"]
+    v4_cidr_blocks = ["10.0.0.0/8", "192.168.0.0/16", "172.16.0.0/12"]
   }
 
   ingress {
@@ -160,7 +166,7 @@ resource "yandex_vpc_security_group" "k8s-main-sg" {
   ingress {
     protocol       = "TCP"
     description    = "Allow port 5432 for PostgreSQL"
-    v4_cidr_blocks = ["10.0.0.0/8", "10.96.0.0/16", "10.112.0.0/16"]
+    v4_cidr_blocks = ["10.0.0.0/8", "192.168.0.0/16", "172.16.0.0/12"]
     port           = 5432
   }
 
