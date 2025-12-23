@@ -13,10 +13,10 @@ try {
     $outputs = terraform output -json | ConvertFrom-Json
     
     $REGISTRY_ID = $outputs.registry_id.value
-    $CLUSTER_ID = $outputs.cluster_id.value
+    $CLUSTER_ID = $outputs.k8s_cluster_id.value
     $EXTERNAL_IP = $outputs.external_ip.value
     $DOMAIN_NAME = $outputs.domain_name.value
-    $DB_HOST = $outputs.db_host.value
+    $DB_HOST = (terraform output -raw db_host)
     $DB_NAME = $outputs.db_name.value
     $DB_USER = $outputs.db_user.value
     $LOCKBOX_ID = $outputs.lockbox_secret_id.value
@@ -26,26 +26,12 @@ try {
         Write-Host "Do you want to run 'terraform apply' to update the infrastructure and state? (y/n)" -ForegroundColor Yellow
         $choice = Read-Host
         if ($choice -eq 'y') {
-            # Ensure we have secrets in environment variables for Terraform
-            if (-not $env:TF_VAR_db_password) {
-                $env:TF_VAR_db_password = [guid]::NewGuid().ToString()
-                Write-Host "Set DB_PASSWORD in environment" -ForegroundColor Gray
-            }
-            if (-not $env:TF_VAR_fastapi_key) {
-                $env:TF_VAR_fastapi_key = [guid]::NewGuid().ToString()
-                Write-Host "Set FASTAPI_KEY in environment" -ForegroundColor Gray
-            }
-            
-            if ($LOCKBOX_ID) {
-                Write-Host "Lockbox secret ID found ($LOCKBOX_ID). Using existing secrets container, but providing values for new version if needed." -ForegroundColor Gray
-            }
-            
             terraform apply -auto-approve
             
             # Re-fetch outputs after apply
             $outputs = terraform output -json | ConvertFrom-Json
             $REGISTRY_ID = $outputs.registry_id.value
-            $CLUSTER_ID = $outputs.cluster_id.value
+            $CLUSTER_ID = $outputs.k8s_cluster_id.value
             $EXTERNAL_IP = $outputs.external_ip.value
             $DOMAIN_NAME = $outputs.domain_name.value
             $DB_HOST = $outputs.db_host.value

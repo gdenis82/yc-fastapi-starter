@@ -50,7 +50,7 @@ terraform/
 *.tfvars
 .terraform/
 .terraform.lock.hcl
-
+terraform/log_new.txt
 # K8s
 k8s/
 
@@ -62,6 +62,8 @@ LICENSE
 README.md
 test_main.http
 .output.txt
+log.txt
+
 
 # Secrets
 *.key

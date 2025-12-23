@@ -20,7 +20,7 @@ if config.config_file_name is not None:
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 from app.core.database import Base
-from app.models.user import User # Import all models here
+import app.models # noqa
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
@@ -71,18 +71,30 @@ async def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    url = get_url()
+    # Log connection attempt
+    import sys
+    print(f"ALEMBIC: Connecting to database... (URL mask: {url.split('@')[-1]})", file=sys.stderr)
+    
     configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = get_url()
+    configuration["sqlalchemy.url"] = url
+    
     connectable = async_engine_from_config(
         configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args={"timeout": 10} # Add timeout for faster failure
     )
 
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
-
-    await connectable.dispose()
+    try:
+        async with connectable.connect() as connection:
+            print("ALEMBIC: Connection established!", file=sys.stderr)
+            await connection.run_sync(do_run_migrations)
+    except Exception as e:
+        print(f"ALEMBIC: Connection failed: {e}", file=sys.stderr)
+        raise
+    finally:
+        await connectable.dispose()
 
 
 if context.is_offline_mode():

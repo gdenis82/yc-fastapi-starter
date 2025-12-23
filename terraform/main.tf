@@ -3,6 +3,9 @@ terraform {
     yandex = {
       source = "yandex-cloud/yandex"
     }
+    random = {
+      source = "hashicorp/random"
+    }
   }
   required_version = ">= 0.13"
 }
@@ -158,16 +161,24 @@ resource "yandex_vpc_security_group" "k8s-main-sg" {
   }
 
   ingress {
-    protocol       = "ICMP"
-    description    = "Allow ICMP for MTU discovery"
-    v4_cidr_blocks = ["0.0.0.0/0"]
+    protocol       = "ANY"
+    description    = "Allow all inside VPC"
+    v4_cidr_blocks = ["10.11.0.0/16", "10.12.0.0/16", "10.13.0.0/16"]
   }
 
   ingress {
     protocol       = "TCP"
-    description    = "Allow port 5432 for PostgreSQL"
-    v4_cidr_blocks = ["10.0.0.0/8", "192.168.0.0/16", "172.16.0.0/12"]
+    description    = "Allow port 5432 for PostgreSQL from everywhere"
+    v4_cidr_blocks = ["0.0.0.0/0"]
     port           = 5432
+  }
+
+  ingress {
+    protocol       = "TCP"
+    description    = "Allow NodePort range for LoadBalancer"
+    v4_cidr_blocks = ["0.0.0.0/0"]
+    from_port      = 30000
+    to_port        = 32767
   }
 
   ingress {
@@ -369,8 +380,9 @@ resource "yandex_mdb_postgresql_cluster" "postgres-cluster" {
   }
 
   host {
-    zone      = "ru-central1-a"
-    subnet_id = yandex_vpc_subnet.k8s-subnet-a.id
+    zone             = "ru-central1-a"
+    subnet_id        = yandex_vpc_subnet.k8s-subnet-a.id
+    assign_public_ip = true
   }
 
   timeouts {
@@ -388,14 +400,30 @@ resource "yandex_mdb_postgresql_database" "fastapi_db" {
 resource "yandex_mdb_postgresql_user" "db_user" {
   cluster_id = yandex_mdb_postgresql_cluster.postgres-cluster.id
   name       = "db_user"
-  password   = var.db_password
+  password   = local.actual_db_password
 }
 
 variable "db_password" {
-  description = "Password for PostgreSQL user"
+  description = "Password for PostgreSQL user (if empty, a random one will be generated)"
   type        = string
   sensitive   = true
   default     = ""
+}
+
+resource "random_password" "db_password" {
+  length           = 16
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
+resource "random_password" "fastapi_key" {
+  length           = 32
+  special          = true
+}
+
+locals {
+  actual_db_password = var.db_password != "" ? var.db_password : random_password.db_password.result
+  actual_fastapi_key = var.fastapi_key != "" ? var.fastapi_key : random_password.fastapi_key.result
 }
 
 resource "yandex_lockbox_secret" "app-secrets" {
@@ -407,11 +435,11 @@ resource "yandex_lockbox_secret_version" "app-secrets-v1" {
   secret_id = yandex_lockbox_secret.app-secrets.id
   entries {
     key        = "db_password"
-    text_value = var.db_password
+    text_value = local.actual_db_password
   }
   entries {
     key        = "fastapi_key"
-    text_value = var.fastapi_key
+    text_value = local.actual_fastapi_key
   }
 
   lifecycle {
@@ -422,7 +450,7 @@ resource "yandex_lockbox_secret_version" "app-secrets-v1" {
 }
 
 variable "fastapi_key" {
-  description = "Secret key for FastAPI application"
+  description = "Secret key for FastAPI application (if empty, a random one will be generated)"
   type        = string
   sensitive   = true
   default     = ""
@@ -444,10 +472,6 @@ output "db_user" {
   value = "db_user"
 }
 
-output "cluster_id" {
-  value = yandex_kubernetes_cluster.k8s-cluster.id
-}
-
 output "registry_id" {
   value = yandex_container_registry.registry.id
 }
@@ -458,4 +482,8 @@ output "external_ip" {
 
 output "domain_name" {
   value = var.domain_name
+}
+
+output "k8s_cluster_id" {
+  value = yandex_kubernetes_cluster.k8s-cluster.id
 }

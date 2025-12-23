@@ -89,6 +89,14 @@ foreach ($sn in $subnets) {
 Write-Host "Deleting Networks..."
 $networks = yc vpc network list --folder-id $FOLDER_ID --format json | ConvertFrom-Json
 foreach ($nw in $networks) {
+    Write-Host "Cleaning up security groups for network $($nw.id)..."
+    $sgs = yc vpc security-group list --folder-id $FOLDER_ID --format json | ConvertFrom-Json
+    foreach ($sg in $sgs) {
+        if ($sg.network_id -eq $nw.id) {
+            Write-Host "  Deleting security group $($sg.id)..."
+            yc vpc security-group delete $($sg.id)
+        }
+    }
     Write-Host "Deleting network $($nw.id)..."
     yc vpc network delete $($nw.id)
 }
