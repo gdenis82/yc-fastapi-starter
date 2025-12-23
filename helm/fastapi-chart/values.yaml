@@ -31,13 +31,6 @@ ingress:
 externalIp: ""
 domainName: "tryout.site"
 
-postgresql:
-  server: ""
-  user: ""
-  password: ""
-  database: ""
-  port: "5432"
-
 fastapiKey: ""
 
 logging:

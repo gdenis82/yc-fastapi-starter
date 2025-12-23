@@ -66,10 +66,11 @@
 
     # При выполнении apply Terraform автоматически сгенерирует безопасные пароли (UUID),
     # если они еще не созданы, и сохранит их в Yandex Lockbox.
+    # Также автоматически выполнится команда получения credentials для kubectl.
     terraform apply -auto-approve
     cd ..
     ```
-    *После успешного выполнения `terraform apply` в консоли появятся `cluster_id`, `registry_id` и `lockbox_secret_id`. Они будут автоматически использованы на следующем этапе. Теперь создается Regional-кластер (High Availability) с мастерами в трех зонах и группой узлов из 2-х нод в разных зонах (`ru-central1-a`, `ru-central1-b`).*
+    *После успешного выполнения `terraform apply` ваш локальный `kubectl` будет автоматически настроен на работу с новым кластером. В консоли появятся `cluster_id`, `registry_id` и `lockbox_secret_id`. Они будут автоматически использованы на следующем этапе. Теперь создается Regional-кластер (High Availability) с мастерами в трех зонах и группой узлов из 2-х нод в разных зонах (`ru-central1-a`, `ru-central1-b`).*
 
 ## 2. Сборка и деплой (Автоматизировано)
 
@@ -83,12 +84,11 @@
 
 Скрипт выполняет следующие действия:
 - Получает ID ресурсов (Registry, Cluster, External IP, Lockbox) из Terraform.
-- Если секреты в Lockbox еще не созданы, он автоматически генерирует надежные пароли (UUID).
 - Собирает и пушит Docker-образ в Yandex Container Registry с уникальным тегом (дата-время).
 - Настраивает `kubectl` на ваш кластер.
 - Устанавливает/обновляет **Ingress NGINX** и **cert-manager**.
-- Безопасно извлекает секреты из **Yandex Lockbox** и создает `Secret` объекты в Kubernetes (без передачи в аргументах Helm).
-- Выполняет `helm upgrade --install` для приложения, передавая настройки подключения к БД.
+- Безопасно извлекает секреты из **Yandex Lockbox** (например, `fastapi_key`) и создает `Secret` объекты в Kubernetes.
+- Выполняет `helm upgrade --install` для приложения.
 - Привязывает статический IP к Ingress-контроллеру.
 
 ---
@@ -108,38 +108,30 @@ docker push "cr.yandex/$REGISTRY_ID/fastapi-app:latest"
 
 ### 3a. Развертывание через Helm
 
-Если вы не используете `deploy.ps1`, вам нужно вручную создать секреты в Kubernetes, чтобы приложение могло подключиться к базе данных.
+Если вы не используете `deploy.ps1`, вам нужно настроить доступ к кластеру и создать секреты в Kubernetes.
 
 ```powershell
 # 1. Получаем необходимые данные из Terraform
-$CLUSTER_ID = (terraform -chdir=terraform output -raw cluster_id)
+$CLUSTER_ID = (terraform -chdir=terraform output -raw k8s_cluster_id)
 $REGISTRY_ID = (terraform -chdir=terraform output -raw registry_id)
 $EXTERNAL_IP = (terraform -chdir=terraform output -raw external_ip)
 $LOCKBOX_ID = (terraform -chdir=terraform output -raw lockbox_secret_id)
 $DOMAIN_NAME = (terraform -chdir=terraform output -raw domain_name)
-$DB_HOST = (terraform -chdir=terraform output -raw db_host)
-$DB_NAME = (terraform -chdir=terraform output -raw db_name)
-$DB_USER = (terraform -chdir=terraform output -raw db_user)
 
-# 2. Настройка kubectl
+# 2. Настройка kubectl (если еще не настроено через terraform apply)
 yc managed-kubernetes cluster get-credentials --id $CLUSTER_ID --external --force
 
 # 3. Создание секретов (извлекаем из Lockbox)
 $payload = yc lockbox payload get --id $LOCKBOX_ID --format json | ConvertFrom-Json
-$DB_PASS = ($payload.entries | Where-Object { $_.key -eq "db_password" }).text_value
 $APP_KEY = ($payload.entries | Where-Object { $_.key -eq "fastapi_key" }).text_value
 
-# Важно: имя секрета должно соответствовать шаблону Helm: <release-name>-<chart-name>-<secret-suffix>
-kubectl create secret generic fastapi-release-fastapi-chart-db-secret --from-literal=password="$DB_PASS" --dry-run=client -o yaml | kubectl apply -f -
-kubectl create secret generic fastapi-release-fastapi-chart-app-secrets --from-literal=fastapi-key="$APP_KEY" --dry-run=client -o yaml | kubectl apply -f -
+# Важно: имя секрета должно соответствовать шаблону в deployment.yaml
+kubectl create secret generic fastapi-app-secrets --from-literal=fastapi-key="$APP_KEY" --dry-run=client -o yaml | kubectl apply -f -
 
 # 4. Деплой через Helm
-helm upgrade --install fastapi-release ./helm/fastapi-chart `
+helm upgrade --install fastapi ./helm/fastapi-chart `
     --set image.repository="cr.yandex/$REGISTRY_ID/fastapi-app" `
     --set externalIp="$EXTERNAL_IP" `
-    --set postgresql.server="$DB_HOST" `
-    --set postgresql.database="$DB_NAME" `
-    --set postgresql.user="$DB_USER" `
     --set domainName="$DOMAIN_NAME" `
     --wait
 ```

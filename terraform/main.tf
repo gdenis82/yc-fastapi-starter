@@ -168,13 +168,6 @@ resource "yandex_vpc_security_group" "k8s-main-sg" {
 
   ingress {
     protocol       = "TCP"
-    description    = "Allow port 5432 for PostgreSQL from everywhere"
-    v4_cidr_blocks = ["0.0.0.0/0"]
-    port           = 5432
-  }
-
-  ingress {
-    protocol       = "TCP"
     description    = "Allow NodePort range for LoadBalancer"
     v4_cidr_blocks = ["0.0.0.0/0"]
     from_port      = 30000
@@ -317,6 +310,14 @@ resource "yandex_kubernetes_node_group" "k8s-node-group" {
   }
 }
 
+resource "null_resource" "get_kubeconfig" {
+  depends_on = [yandex_kubernetes_node_group.k8s-node-group]
+
+  provisioner "local-exec" {
+    command = "yc managed-kubernetes cluster get-credentials --id ${yandex_kubernetes_cluster.k8s-cluster.id} --external --force"
+  }
+}
+
 resource "yandex_container_registry" "registry" {
   name = "k8s-registry"
 }
@@ -352,77 +353,12 @@ resource "yandex_dns_recordset" "rs1" {
 # Network Load Balancer is managed by Kubernetes Service/Ingress automatically.
 # Manual creation in TF is not recommended for Managed K8s as it won't track dynamic nodes.
 
-resource "yandex_mdb_postgresql_cluster" "postgres-cluster" {
-  name        = "postgres-cluster"
-  environment = "PRESTABLE"
-  network_id  = yandex_vpc_network.k8s-network.id
-  security_group_ids = [yandex_vpc_security_group.k8s-main-sg.id]
-
-  config {
-    version = 16
-    postgresql_config = {
-      max_connections = 100
-      log_min_duration_statement = 500
-      log_checkpoints = true
-      log_connections = true
-      log_disconnections = true
-      log_lock_waits = true
-    }
-    resources {
-      resource_preset_id = "s2.micro"
-      disk_type_id       = "network-ssd"
-      disk_size          = 10
-    }
-    access {
-      web_sql       = true
-      data_transfer = true
-    }
-  }
-
-  host {
-    zone             = "ru-central1-a"
-    subnet_id        = yandex_vpc_subnet.k8s-subnet-a.id
-    assign_public_ip = true
-  }
-
-  timeouts {
-    create = "30m"
-    delete = "30m"
-  }
-}
-
-resource "yandex_mdb_postgresql_database" "fastapi_db" {
-  cluster_id = yandex_mdb_postgresql_cluster.postgres-cluster.id
-  name       = "fastapi_db"
-  owner      = yandex_mdb_postgresql_user.db_user.name
-}
-
-resource "yandex_mdb_postgresql_user" "db_user" {
-  cluster_id = yandex_mdb_postgresql_cluster.postgres-cluster.id
-  name       = "db_user"
-  password   = local.actual_db_password
-}
-
-variable "db_password" {
-  description = "Password for PostgreSQL user (if empty, a random one will be generated)"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-resource "random_password" "db_password" {
-  length           = 16
-  special          = true
-  override_special = "!#$%&*()-_=+[]{}<>:?"
-}
-
 resource "random_password" "fastapi_key" {
   length           = 32
   special          = true
 }
 
 locals {
-  actual_db_password = var.db_password != "" ? var.db_password : random_password.db_password.result
   actual_fastapi_key = var.fastapi_key != "" ? var.fastapi_key : random_password.fastapi_key.result
 }
 
@@ -433,10 +369,6 @@ resource "yandex_lockbox_secret" "app-secrets" {
 
 resource "yandex_lockbox_secret_version" "app-secrets-v1" {
   secret_id = yandex_lockbox_secret.app-secrets.id
-  entries {
-    key        = "db_password"
-    text_value = local.actual_db_password
-  }
   entries {
     key        = "fastapi_key"
     text_value = local.actual_fastapi_key
@@ -458,18 +390,6 @@ variable "fastapi_key" {
 
 output "lockbox_secret_id" {
   value = yandex_lockbox_secret.app-secrets.id
-}
-
-output "db_host" {
-  value = yandex_mdb_postgresql_cluster.postgres-cluster.host[0].fqdn
-}
-
-output "db_name" {
-  value = "fastapi_db"
-}
-
-output "db_user" {
-  value = "db_user"
 }
 
 output "registry_id" {

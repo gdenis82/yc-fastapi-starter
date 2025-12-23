@@ -16,12 +16,9 @@ try {
     $CLUSTER_ID = $outputs.k8s_cluster_id.value
     $EXTERNAL_IP = $outputs.external_ip.value
     $DOMAIN_NAME = $outputs.domain_name.value
-    $DB_HOST = (terraform output -raw db_host)
-    $DB_NAME = $outputs.db_name.value
-    $DB_USER = $outputs.db_user.value
     $LOCKBOX_ID = $outputs.lockbox_secret_id.value
 
-    if ($null -eq $REGISTRY_ID -or $null -eq $CLUSTER_ID -or $null -eq $EXTERNAL_IP -or $null -eq $DB_HOST -or $null -eq $LOCKBOX_ID) {
+    if ($null -eq $REGISTRY_ID -or $null -eq $CLUSTER_ID -or $null -eq $EXTERNAL_IP -or $null -eq $LOCKBOX_ID) {
         Write-Host "Some required Terraform outputs are missing." -ForegroundColor Yellow
         Write-Host "Do you want to run 'terraform apply' to update the infrastructure and state? (y/n)" -ForegroundColor Yellow
         $choice = Read-Host
@@ -34,16 +31,13 @@ try {
             $CLUSTER_ID = $outputs.k8s_cluster_id.value
             $EXTERNAL_IP = $outputs.external_ip.value
             $DOMAIN_NAME = $outputs.domain_name.value
-            $DB_HOST = $outputs.db_host.value
-            $DB_NAME = $outputs.db_name.value
-            $DB_USER = $outputs.db_user.value
             $LOCKBOX_ID = $outputs.lockbox_secret_id.value
         } else {
             throw "Infrastructure is incomplete. Please run 'terraform apply' manually."
         }
     }
 
-    if (-not $REGISTRY_ID -or -not $CLUSTER_ID -or -not $EXTERNAL_IP -or -not $DB_HOST -or -not $LOCKBOX_ID) {
+    if (-not $REGISTRY_ID -or -not $CLUSTER_ID -or -not $EXTERNAL_IP -or -not $LOCKBOX_ID) {
         throw "One or more required Terraform outputs are still missing after attempt to apply."
     }
 } catch {
@@ -109,23 +103,15 @@ if ($issuerExists) {
     kubectl annotate clusterissuer letsencrypt-prod meta.helm.sh/release-namespace=default --overwrite
 }
 
-# Fetch secrets from Yandex Lockbox and create Kubernetes Secrets directly
-Write-Host "Fetching secrets from Yandex Lockbox and updating Kubernetes Secrets..."
-# Use positional argument for secret ID to avoid the --id conflict if it arises, and ensure it's quoted
+# Determine FastAPI key from Lockbox
 $payload = yc lockbox payload get $LOCKBOX_ID --format json | ConvertFrom-Json
-$DB_PASSWORD_FROM_LOCKBOX = ($payload.entries | Where-Object { $_.key -eq "db_password" }).text_value
 $FASTAPI_KEY_FROM_LOCKBOX = ($payload.entries | Where-Object { $_.key -eq "fastapi_key" }).text_value
 
-if (-not $DB_PASSWORD_FROM_LOCKBOX) { throw "Failed to fetch DB_PASSWORD from Lockbox" }
 if (-not $FASTAPI_KEY_FROM_LOCKBOX) { throw "Failed to fetch FASTAPI_KEY from Lockbox" }
 
 # Create/Update secrets via kubectl to avoid passing them as helm arguments
 # We use --dry-run=client -o yaml | kubectl apply to be idempotent and silent about values
 $RELEASE_NAME = "fastapi"
-
-kubectl create secret generic "$RELEASE_NAME-db-secret" `
-    --from-literal=password="$DB_PASSWORD_FROM_LOCKBOX" `
-    --dry-run=client -o yaml | kubectl apply -f -
 
 kubectl create secret generic "$RELEASE_NAME-app-secrets" `
     --from-literal=fastapi-key="$FASTAPI_KEY_FROM_LOCKBOX" `
@@ -137,9 +123,6 @@ helm upgrade --install $RELEASE_NAME ./helm/fastapi-chart `
     --set image.repository="cr.yandex/$REGISTRY_ID/fastapi-app" `
     --set image.tag="$TAG" `
     --set externalIp="$EXTERNAL_IP" `
-    --set postgresql.server="$DB_HOST" `
-    --set postgresql.database="$DB_NAME" `
-    --set postgresql.user="$DB_USER" `
     --set domainName="$DOMAIN_CLEAN" `
     --set logging.level="INFO" `
     --set ingress.className="nginx" `

@@ -34,14 +34,7 @@ Write-Host "Deleting Kubernetes Clusters..."
 $clusters = yc managed-kubernetes cluster list --folder-id $FOLDER_ID --format json | ConvertFrom-Json
 foreach ($c in $clusters) {
     Write-Host "Deleting cluster $($c.id)..."
-    yc managed-kubernetes cluster delete $($c.id) --async
-}
-
-Write-Host "Deleting PostgreSQL Clusters..."
-$pg_clusters = yc mdb postgresql cluster list --folder-id $FOLDER_ID --format json | ConvertFrom-Json
-foreach ($pc in $pg_clusters) {
-    Write-Host "Deleting PG cluster $($pc.id)..."
-    yc mdb postgresql cluster delete $($pc.id) --async
+    yc managed-kubernetes cluster delete $($c.id)
 }
 
 Write-Host "Deleting Container Registries and Images..."
@@ -52,10 +45,10 @@ foreach ($r in $registries) {
     $repos = yc container repository list --registry-id $($r.id) --format json | ConvertFrom-Json
     foreach ($repo in $repos) {
         Write-Host "  Deleting repository $($repo.name)..."
-        yc container repository delete $($repo.id) --async
+        yc container repository delete $($repo.id)
     }
     Write-Host "  Deleting registry itself..."
-    yc container registry delete $($r.id) --async
+    yc container registry delete $($r.id)
 }
 
 Write-Host "Deleting Lockbox Secrets..."

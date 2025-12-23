@@ -1,10 +1,6 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.database import get_db
+from fastapi import APIRouter
 from app.core.logger import logger
-from sqlalchemy import text
 import os
-import asyncio
 
 router = APIRouter()
 
@@ -14,16 +10,8 @@ async def read_root():
     return {"message": "Hello from FastAPI on Kubernetes!"}
 
 @router.get("/health")
-async def health(db: AsyncSession = Depends(get_db)):
-    try:
-        # Check DB connection
-        logger.debug("Checking database health...")
-        # Reduce timeout for health check so it doesn't hang the pod
-        await asyncio.wait_for(db.execute(text("SELECT 1")), timeout=2.0)
-        return {"status": "ok", "db": "connected"}
-    except Exception as e:
-        logger.error(f"Database health check failed: {e}")
-        return {"status": "degraded", "db": str(e)}
+async def health():
+    return {"status": "ok"}
 
 @router.get("/pod")
 async def get_pod_name():
