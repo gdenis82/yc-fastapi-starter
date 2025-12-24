@@ -56,7 +56,11 @@ try {
 Write-Host "`n--- Step 3: Attempting Terraform Destroy ---" -ForegroundColor Cyan
 Push-Location terraform
 try {
-    terraform destroy -auto-approve
+    if (Test-Path "terraform.tfstate") {
+        terraform destroy -auto-approve
+    } else {
+        Write-Host "No terraform.tfstate found, skipping terraform destroy." -ForegroundColor Yellow
+    }
 } catch {
     Write-Warning "Terraform destroy failed or partially failed. Proceeding with manual cleanup."
 }
@@ -66,74 +70,124 @@ Write-Host "`n--- Step 4: Forced cleanup via YC CLI ---" -ForegroundColor Cyan
 
 Write-Host "Deleting Kubernetes Clusters..."
 $clusters = yc managed-kubernetes cluster list --folder-id $FOLDER_ID --format json | ConvertFrom-Json
-foreach ($c in $clusters) {
-    Write-Host "Deleting cluster $($c.id)..."
-    yc managed-kubernetes cluster delete $($c.id)
+if ($null -ne $clusters) {
+    foreach ($c in $clusters) {
+        if ($null -ne $c.id) {
+            Write-Host "Deleting cluster $($c.id)..."
+            yc managed-kubernetes cluster delete $($c.id)
+        }
+    }
 }
 
 Write-Host "Deleting Container Registries and Images..."
 $registries = yc container registry list --folder-id $FOLDER_ID --format json | ConvertFrom-Json
-foreach ($r in $registries) {
-    Write-Host "Cleaning up registry $($r.name) ($($r.id))..."
-    # List and delete all repositories in the registry
-    $repos = yc container repository list --registry-id $($r.id) --format json | ConvertFrom-Json
-    foreach ($repo in $repos) {
-        Write-Host "  Deleting repository $($repo.name)..."
-        yc container repository delete $($repo.id)
+if ($null -ne $registries) {
+    foreach ($r in $registries) {
+        Write-Host "Cleaning up registry $($r.name) ($($r.id))..."
+        # List repositories
+        $repos = yc container repository list --registry-id $($r.id) --format json | ConvertFrom-Json
+        if ($null -ne $repos) {
+            foreach ($repo in $repos) {
+                Write-Host "  Processing repository $($repo.name)..."
+                # List and delete all images in the repository
+                $images = yc container image list --registry-id $($r.id) --repository-name $($repo.name) --format json | ConvertFrom-Json
+                if ($null -ne $images -and $images.Count -gt 0) {
+                    $imageIds = $images | ForEach-Object { $_.id }
+                    Write-Host "    Deleting $($images.Count) images..."
+                    yc container image delete $imageIds
+                }
+            }
+        }
+        Write-Host "  Deleting registry itself..."
+        yc container registry delete $($r.id)
     }
-    Write-Host "  Deleting registry itself..."
-    yc container registry delete $($r.id)
 }
 
 Write-Host "Deleting Lockbox Secrets..."
 $secrets = yc lockbox secret list --folder-id $FOLDER_ID --format json | ConvertFrom-Json
-foreach ($s in $secrets) {
-    Write-Host "Deleting secret $($s.id)..."
-    yc lockbox secret delete $($s.id)
+if ($null -ne $secrets) {
+    foreach ($s in $secrets) {
+        if ($null -ne $s.id) {
+            Write-Host "Deleting secret $($s.id)..."
+            yc lockbox secret delete $($s.id)
+        }
+    }
 }
 
 Write-Host "Deleting DNS Zones..."
 $zones = yc dns zone list --folder-id $FOLDER_ID --format json | ConvertFrom-Json
-foreach ($z in $zones) {
-    Write-Host "Deleting DNS zone $($z.id)..."
-    yc dns zone delete $($z.id)
+if ($null -ne $zones) {
+    foreach ($z in $zones) {
+        if ($null -ne $z.id) {
+            Write-Host "Deleting DNS zone $($z.id)..."
+            yc dns zone delete $($z.id)
+        }
+    }
+}
+
+Write-Host "Deleting Cloud Logging Groups..."
+$logGroups = yc logging group list --folder-id $FOLDER_ID --format json | ConvertFrom-Json
+if ($null -ne $logGroups) {
+    foreach ($lg in $logGroups) {
+        if ($null -ne $lg.id) {
+            # Note: "default" group might have special handling, but we try to delete all found in the folder
+            Write-Host "Deleting log group $($lg.name) ($($lg.id))..."
+            yc logging group delete $($lg.id)
+        }
+    }
 }
 
 Write-Host "Deleting Static IPs..."
 $ips = yc vpc address list --folder-id $FOLDER_ID --format json | ConvertFrom-Json
-foreach ($ip in $ips) {
-    Write-Host "Deleting IP $($ip.id)..."
-    yc vpc address delete $($ip.id)
+if ($null -ne $ips) {
+    foreach ($ip in $ips) {
+        if ($null -ne $ip.id) {
+            Write-Host "Deleting IP $($ip.id)..."
+            yc vpc address delete $($ip.id)
+        }
+    }
 }
 
 Write-Host "Deleting Subnets..."
 $subnets = yc vpc subnet list --folder-id $FOLDER_ID --format json | ConvertFrom-Json
-foreach ($sn in $subnets) {
-    Write-Host "Deleting subnet $($sn.id)..."
-    yc vpc subnet delete $($sn.id)
+if ($null -ne $subnets) {
+    foreach ($sn in $subnets) {
+        if ($null -ne $sn.id) {
+            Write-Host "Deleting subnet $($sn.id)..."
+            yc vpc subnet delete $($sn.id)
+        }
+    }
 }
 
 Write-Host "Deleting Networks..."
 $networks = yc vpc network list --folder-id $FOLDER_ID --format json | ConvertFrom-Json
-foreach ($nw in $networks) {
-    Write-Host "Cleaning up security groups for network $($nw.id)..."
-    $sgs = yc vpc security-group list --folder-id $FOLDER_ID --format json | ConvertFrom-Json
-    foreach ($sg in $sgs) {
-        if ($sg.network_id -eq $nw.id) {
-            Write-Host "  Deleting security group $($sg.id)..."
-            yc vpc security-group delete $($sg.id)
+if ($null -ne $networks) {
+    foreach ($nw in $networks) {
+        if ($null -ne $nw.id) {
+            Write-Host "Cleaning up security groups for network $($nw.id)..."
+            $sgs = yc vpc security-group list --folder-id $FOLDER_ID --format json | ConvertFrom-Json
+            if ($null -ne $sgs) {
+                foreach ($sg in $sgs) {
+                    if ($sg.network_id -eq $nw.id -and $null -ne $sg.id) {
+                        Write-Host "  Deleting security group $($sg.id)..."
+                        yc vpc security-group delete $($sg.id)
+                    }
+                }
+            }
+            Write-Host "Deleting network $($nw.id)..."
+            yc vpc network delete $($nw.id)
         }
     }
-    Write-Host "Deleting network $($nw.id)..."
-    yc vpc network delete $($nw.id)
 }
 
 Write-Host "Deleting Service Accounts..."
 $sas = yc iam service-account list --folder-id $FOLDER_ID --format json | ConvertFrom-Json
-foreach ($sa in $sas) {
-    if ($sa.name -ne "tf-bootstrap") { # Keep bootstrap SA if it was created manually
-        Write-Host "Deleting SA $($sa.name) ($($sa.id))..."
-        yc iam service-account delete $($sa.id)
+if ($null -ne $sas) {
+    foreach ($sa in $sas) {
+        if ($null -ne $sa.id -and $sa.name -ne "tf-bootstrap") { # Keep bootstrap SA if it was created manually
+            Write-Host "Deleting SA $($sa.name) ($($sa.id))..."
+            yc iam service-account delete $($sa.id)
+        }
     }
 }
 
