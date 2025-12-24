@@ -18,9 +18,16 @@ try {
     $DOMAIN_NAME = $outputs.domain_name.value
     $LOCKBOX_ID = $outputs.lockbox_secret_id.value
 
-    if ($null -eq $REGISTRY_ID -or $null -eq $CLUSTER_ID -or $null -eq $EXTERNAL_IP -or $null -eq $LOCKBOX_ID) {
-        Write-Host "Some required Terraform outputs are missing." -ForegroundColor Yellow
-        Write-Host "Do you want to run 'terraform apply' to update the infrastructure and state? (y/n)" -ForegroundColor Yellow
+    # Check if resources actually exist in YC (to prevent "Registry not found" errors)
+    $registryExists = $false
+    if ($REGISTRY_ID) {
+        $check = yc container registry get --id $REGISTRY_ID 2>$null
+        if ($LASTEXITCODE -eq 0) { $registryExists = $true }
+    }
+
+    if ($null -eq $REGISTRY_ID -or -not $registryExists -or $null -eq $CLUSTER_ID -or $null -eq $EXTERNAL_IP -or $null -eq $LOCKBOX_ID) {
+        Write-Host "Some required resources are missing or missing from Terraform state." -ForegroundColor Yellow
+        Write-Host "Do you want to run 'terraform apply' to (re)create the infrastructure? (y/n)" -ForegroundColor Yellow
         $choice = Read-Host
         if ($choice -eq 'y') {
             terraform apply -auto-approve
@@ -77,9 +84,12 @@ Write-Host "Installing Ingress NGINX (via Helm)..."
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx 2>$null
 helm repo update ingress-nginx
 
+# Ensure namespace exists before applying anything that might fail if it doesn't
+kubectl create namespace ingress-nginx --dry-run=client -o yaml | kubectl apply -f -
+
 helm upgrade --install ingress-nginx ingress-nginx `
   --repo https://kubernetes.github.io/ingress-nginx `
-  --namespace ingress-nginx --create-namespace `
+  --namespace ingress-nginx `
   --set controller.service.type=LoadBalancer `
   --set controller.service.loadBalancerIP="$EXTERNAL_IP" `
   --set controller.service.annotations."service\.beta\.kubernetes\.io/yandex-cloud-load-balancer-type"=external `
@@ -113,6 +123,7 @@ if (-not $FASTAPI_KEY_FROM_LOCKBOX) { throw "Failed to fetch FASTAPI_KEY from Lo
 # We use --dry-run=client -o yaml | kubectl apply to be idempotent and silent about values
 $RELEASE_NAME = "fastapi"
 
+Write-Host "Creating/Updating application secrets..."
 kubectl create secret generic "$RELEASE_NAME-app-secrets" `
     --from-literal=fastapi-key="$FASTAPI_KEY_FROM_LOCKBOX" `
     --dry-run=client -o yaml | kubectl apply -f -

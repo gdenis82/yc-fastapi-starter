@@ -23,12 +23,46 @@ if ($confirm -ne "DESTROY") {
     exit
 }
 
-Write-Host "`n--- Step 2: Attempting Terraform Destroy ---" -ForegroundColor Cyan
+Write-Host "`n--- Step 2: Cleaning up Kubernetes resources ---" -ForegroundColor Cyan
+try {
+    # Check if we have a cluster to clean up
+    $clusters = yc managed-kubernetes cluster list --folder-id $FOLDER_ID --format json | ConvertFrom-Json
+    foreach ($c in $clusters) {
+        if ($c.status -eq "RUNNING") {
+            Write-Host "Getting credentials for cluster $($c.name) ($($c.id))..."
+            yc managed-kubernetes cluster get-credentials --id $($c.id) --external --force 2>$null
+            
+            Write-Host "Uninstalling Helm releases..."
+            $releases = helm list -A --output json | ConvertFrom-Json
+            foreach ($rel in $releases) {
+                Write-Host "  Uninstalling release $($rel.name) in namespace $($rel.namespace)..."
+                helm uninstall $($rel.name) --namespace $($rel.namespace) --wait 2>$null
+            }
+
+            Write-Host "Deleting remaining namespaces (except default ones)..."
+            $namespaces = kubectl get ns -o jsonpath='{.items[*].metadata.name}'
+            foreach ($ns in $namespaces.Split(' ')) {
+                if ($ns -notin @("default", "kube-system", "kube-public", "kube-node-lease")) {
+                    Write-Host "  Deleting namespace $ns..."
+                    kubectl delete ns $ns --timeout=30s 2>$null
+                }
+            }
+        }
+    }
+} catch {
+    Write-Warning "Failed to cleanup some K8s resources: $_"
+}
+
+Write-Host "`n--- Step 3: Attempting Terraform Destroy ---" -ForegroundColor Cyan
 Push-Location terraform
-terraform destroy -auto-approve
+try {
+    terraform destroy -auto-approve
+} catch {
+    Write-Warning "Terraform destroy failed or partially failed. Proceeding with manual cleanup."
+}
 Pop-Location
 
-Write-Host "`n--- Step 3: Forced cleanup via YC CLI ---" -ForegroundColor Cyan
+Write-Host "`n--- Step 4: Forced cleanup via YC CLI ---" -ForegroundColor Cyan
 
 Write-Host "Deleting Kubernetes Clusters..."
 $clusters = yc managed-kubernetes cluster list --folder-id $FOLDER_ID --format json | ConvertFrom-Json
@@ -100,6 +134,16 @@ foreach ($sa in $sas) {
     if ($sa.name -ne "tf-bootstrap") { # Keep bootstrap SA if it was created manually
         Write-Host "Deleting SA $($sa.name) ($($sa.id))..."
         yc iam service-account delete $($sa.id)
+    }
+}
+
+Write-Host "`n--- Step 5: Finalizing ---" -ForegroundColor Cyan
+if (Test-Path "terraform/terraform.tfstate") {
+    $cleanState = Read-Host "Do you want to delete local terraform.tfstate? (y/n)"
+    if ($cleanState -eq 'y') {
+        Remove-Item "terraform/terraform.tfstate" -Force
+        Remove-Item "terraform/terraform.tfstate.backup" -ErrorAction SilentlyContinue
+        Write-Host "Local state files removed."
     }
 }
 
