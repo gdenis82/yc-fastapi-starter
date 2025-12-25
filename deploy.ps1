@@ -73,7 +73,7 @@ $IMAGE_NAME = "cr.yandex/$REGISTRY_ID/fastapi-app:$TAG"
 $LATEST_NAME = "cr.yandex/$REGISTRY_ID/fastapi-app:latest"
 
 Write-Host "Building image $IMAGE_NAME..."
-docker build -t $IMAGE_NAME -t $LATEST_NAME .
+docker build -t $IMAGE_NAME -t $LATEST_NAME ./services/backend
 if ($LASTEXITCODE -ne 0) { throw "Docker build failed" }
 
 Write-Host "Pushing images to Registry..."

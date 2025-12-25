@@ -1,6 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.orm import Session
 from app.core.logger import logger
 from app.core.config import settings
+from app.db.session import get_db
 import os
 import psycopg2
 
@@ -16,19 +18,15 @@ async def health():
     return {"status": "ok"}
 
 @router.get("/db-check")
-async def db_check():
+async def db_check(db: Session = Depends(get_db)):
     if not settings.DATABASE_URL:
         return {"status": "error", "message": "DATABASE_URL is not set"}
     
     try:
-        # For psycopg2 connection string from settings
-        conn = psycopg2.connect(settings.DATABASE_URL)
-        cur = conn.cursor()
-        cur.execute("SELECT version();")
-        version = cur.fetchone()
-        cur.close()
-        conn.close()
-        return {"status": "ok", "db_version": version[0]}
+        # Check using SQLAlchemy session
+        from sqlalchemy import text
+        result = db.execute(text("SELECT version();")).fetchone()
+        return {"status": "ok", "db_version": result[0]}
     except Exception as e:
         logger.error(f"Database connection error: {e}")
         return {"status": "error", "message": str(e)}
