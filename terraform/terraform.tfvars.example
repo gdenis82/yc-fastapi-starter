@@ -1,0 +1,7 @@
+folder_id = ""
+cloud_id  = ""
+
+# Path to Service Account JSON key
+service_account_key_file = "sa-key.json"
+
+domain_name = "tryout.site"

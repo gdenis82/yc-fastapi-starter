@@ -1,3 +1,4 @@
+# --- Terraform Configuration and Providers ---
 terraform {
   required_providers {
     yandex = {
@@ -10,6 +11,7 @@ terraform {
   required_version = ">= 0.13"
 }
 
+# --- Yandex Cloud Provider Configuration ---
 provider "yandex" {
   # Auth: specify either token or service_account_key_file
   token                     = var.token
@@ -21,6 +23,7 @@ provider "yandex" {
   zone      = "ru-central1-a"
 }
 
+# --- Input Variables ---
 variable "folder_id" {
   type = string
 }
@@ -42,12 +45,14 @@ variable "service_account_key_file" {
   default     = null
 }
 
+# --- Infrastructure Management Service Account ---
 resource "yandex_iam_service_account" "sa" {
   name        = "tf-admin-sa"
   description = "Service account for managing infrastructure via Terraform"
   folder_id   = var.folder_id
 }
 
+# --- IAM Bindings for Terraform Admin SA ---
 resource "yandex_resourcemanager_folder_iam_member" "sa-roles" {
   for_each  = toset([
     "admin",
@@ -63,10 +68,12 @@ resource "yandex_resourcemanager_folder_iam_member" "sa-roles" {
   member    = "serviceAccount:${yandex_iam_service_account.sa.id}"
 }
 
+# --- VPC Network ---
 resource "yandex_vpc_network" "k8s-network" {
   name = "k8s-network"
 }
 
+# --- VPC Subnets ---
 resource "yandex_vpc_subnet" "k8s-subnet-a" {
   name           = "k8s-subnet-a"
   zone           = "ru-central1-a"
@@ -88,12 +95,14 @@ resource "yandex_vpc_subnet" "k8s-subnet-d" {
   v4_cidr_blocks = ["10.13.0.0/24"]
 }
 
+# --- Kubernetes Service Account ---
 resource "yandex_iam_service_account" "k8s-sa" {
   name        = "k8s-sa"
   description = "K8s service account"
   folder_id   = var.folder_id
 }
 
+# --- IAM Bindings for Kubernetes Service Account ---
 resource "yandex_resourcemanager_folder_iam_member" "k8s-clusters-agent" {
   folder_id = var.folder_id
   role      = "k8s.clusters.agent"
@@ -142,6 +151,7 @@ resource "yandex_resourcemanager_folder_iam_member" "k8s-sa-lockbox-payload" {
   member    = "serviceAccount:${yandex_iam_service_account.k8s-sa.id}"
 }
 
+# --- Security Group for Kubernetes Cluster ---
 resource "yandex_vpc_security_group" "k8s-main-sg" {
   name        = "k8s-main-sg"
   network_id  = yandex_vpc_network.k8s-network.id
@@ -223,6 +233,7 @@ resource "yandex_vpc_security_group" "k8s-main-sg" {
   }
 }
 
+# --- Managed Kubernetes Cluster ---
 resource "yandex_kubernetes_cluster" "k8s-cluster" {
   name        = "k8s-cluster"
   network_id  = yandex_vpc_network.k8s-network.id
@@ -266,6 +277,7 @@ resource "yandex_kubernetes_cluster" "k8s-cluster" {
   ]
 }
 
+# --- Kubernetes Node Group ---
 resource "yandex_kubernetes_node_group" "k8s-node-group" {
   cluster_id  = yandex_kubernetes_cluster.k8s-cluster.id
   name        = "k8s-node-group"
@@ -310,6 +322,7 @@ resource "yandex_kubernetes_node_group" "k8s-node-group" {
   }
 }
 
+# --- Provisioner to get Kubeconfig locally ---
 resource "null_resource" "get_kubeconfig" {
   depends_on = [yandex_kubernetes_node_group.k8s-node-group]
 
@@ -318,10 +331,12 @@ resource "null_resource" "get_kubeconfig" {
   }
 }
 
+# --- Container Registry ---
 resource "yandex_container_registry" "registry" {
   name = "k8s-registry"
 }
 
+# --- Static Public IP for Ingress ---
 resource "yandex_vpc_address" "addr" {
   name = "fastapi-address"
   external_ipv4_address {
@@ -329,12 +344,14 @@ resource "yandex_vpc_address" "addr" {
   }
 }
 
+# --- DNS Domain Variable ---
 variable "domain_name" {
   description = "Domain name for the application"
   type        = string
   default     = "tryout.site"
 }
 
+# --- DNS Zone ---
 resource "yandex_dns_zone" "zone1" {
   name        = "fastapi-zone"
   description = "DNS zone for ${var.domain_name}"
@@ -342,6 +359,7 @@ resource "yandex_dns_zone" "zone1" {
   public      = true
 }
 
+# --- DNS A Record for the Domain ---
 resource "yandex_dns_recordset" "rs1" {
   zone_id = yandex_dns_zone.zone1.id
   name    = "${var.domain_name}."
@@ -350,9 +368,7 @@ resource "yandex_dns_recordset" "rs1" {
   data    = [yandex_vpc_address.addr.external_ipv4_address[0].address]
 }
 
-# Network Load Balancer is managed by Kubernetes Service/Ingress automatically.
-# Manual creation in TF is not recommended for Managed K8s as it won't track dynamic nodes.
-
+# --- Password for FastAPI Key ---
 resource "random_password" "fastapi_key" {
   length           = 32
   special          = true
@@ -362,11 +378,13 @@ locals {
   actual_fastapi_key = var.fastapi_key != "" ? var.fastapi_key : random_password.fastapi_key.result
 }
 
+# --- Yandex Lockbox Secret Container ---
 resource "yandex_lockbox_secret" "app-secrets" {
   name        = "app-secrets"
   description = "Secrets for FastAPI application"
 }
 
+# --- Managed PostgreSQL Cluster ---
 resource "yandex_mdb_postgresql_cluster" "postgres" {
   name        = "fastapi-db"
   environment = "PRESTABLE"
@@ -401,6 +419,7 @@ resource "yandex_mdb_postgresql_cluster" "postgres" {
   }
 }
 
+# --- PostgreSQL Database ---
 resource "yandex_mdb_postgresql_database" "fastapi_db" {
   cluster_id = yandex_mdb_postgresql_cluster.postgres.id
   name       = "fastapi_db"
@@ -408,6 +427,7 @@ resource "yandex_mdb_postgresql_database" "fastapi_db" {
   depends_on = [yandex_mdb_postgresql_user.dbuser]
 }
 
+# --- PostgreSQL User ---
 resource "yandex_mdb_postgresql_user" "dbuser" {
   cluster_id = yandex_mdb_postgresql_cluster.postgres.id
   name       = "dbuser"
@@ -415,12 +435,13 @@ resource "yandex_mdb_postgresql_user" "dbuser" {
   depends_on = [yandex_mdb_postgresql_cluster.postgres]
 }
 
-
+# --- Password for DB User ---
 resource "random_password" "db_password" {
   length  = 16
   special = true
 }
 
+# --- Lockbox Secret Version (Actual Payload) ---
 resource "yandex_lockbox_secret_version" "app-secrets-v1" {
   secret_id = yandex_lockbox_secret.app-secrets.id
   entries {
@@ -433,6 +454,7 @@ resource "yandex_lockbox_secret_version" "app-secrets-v1" {
   }
 }
 
+# --- Additional Input Variables and Outputs ---
 variable "fastapi_key" {
   description = "Secret key for FastAPI application (if empty, a random one will be generated)"
   type        = string
