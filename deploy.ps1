@@ -113,11 +113,13 @@ if ($issuerExists) {
     kubectl annotate clusterissuer letsencrypt-prod meta.helm.sh/release-namespace=default --overwrite
 }
 
-# Determine FastAPI key from Lockbox
+# Determine FastAPI key and Database URL from Lockbox
 $payload = yc lockbox payload get $LOCKBOX_ID --format json | ConvertFrom-Json
 $FASTAPI_KEY_FROM_LOCKBOX = ($payload.entries | Where-Object { $_.key -eq "fastapi_key" }).text_value
+$DATABASE_URL_FROM_LOCKBOX = ($payload.entries | Where-Object { $_.key -eq "database_url" }).text_value
 
 if (-not $FASTAPI_KEY_FROM_LOCKBOX) { throw "Failed to fetch FASTAPI_KEY from Lockbox" }
+if (-not $DATABASE_URL_FROM_LOCKBOX) { throw "Failed to fetch DATABASE_URL from Lockbox" }
 
 # Create/Update secrets via kubectl to avoid passing them as helm arguments
 # We use --dry-run=client -o yaml | kubectl apply to be idempotent and silent about values
@@ -126,6 +128,7 @@ $RELEASE_NAME = "fastapi"
 Write-Host "Creating/Updating application secrets..."
 kubectl create secret generic "$RELEASE_NAME-app-secrets" `
     --from-literal=fastapi-key="$FASTAPI_KEY_FROM_LOCKBOX" `
+    --from-literal=database-url="$DATABASE_URL_FROM_LOCKBOX" `
     --dry-run=client -o yaml | kubectl apply -f -
 
 Write-Host "Deploying with Helm..." -ForegroundColor Cyan

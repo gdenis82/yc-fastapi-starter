@@ -32,6 +32,7 @@ externalIp: ""
 domainName: "tryout.site"
 
 fastapiKey: ""
+databaseUrl: ""
 
 logging:
   level: "INFO"

@@ -5,12 +5,15 @@ RUN apt-get update && apt-get install -y \
     dnsutils \
     curl \
     ca-certificates \
+    wget \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
-# Download Yandex Cloud CA certificate
-RUN mkdir -p /usr/local/share/ca-certificates/Yandex && \
-    curl -sSL https://storage.yandexcloud.net/cloud-certs/CA.pem -o /usr/local/share/ca-certificates/Yandex/YandexInternalRootCA.crt && \
-    update-ca-certificates
+# Download Yandex Cloud CA certificate for PostgreSQL
+RUN mkdir -p /root/.postgresql && \
+    wget "https://storage.yandexcloud.net/cloud-certs/CA.pem" \
+         --output-document /root/.postgresql/root.crt && \
+    chmod 0600 /root/.postgresql/root.crt
 
 WORKDIR /app
 

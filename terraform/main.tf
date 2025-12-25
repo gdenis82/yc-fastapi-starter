@@ -367,11 +367,62 @@ resource "yandex_lockbox_secret" "app-secrets" {
   description = "Secrets for FastAPI application"
 }
 
+resource "yandex_mdb_postgresql_cluster" "postgres" {
+  name        = "fastapi-db"
+  environment = "PRESTABLE"
+  network_id  = yandex_vpc_network.k8s-network.id
+
+  config {
+    version = 16
+    resources {
+      resource_preset_id = "s2.micro"
+      disk_type_id       = "network-ssd"
+      disk_size          = 10
+    }
+    postgresql_config = {
+      max_connections                   = 100
+      enable_parallel_hash              = true
+      autovacuum_vacuum_scale_factor    = 0.1
+      autovacuum_analyze_scale_factor   = 0.05
+    }
+  }
+
+  host {
+    zone      = "ru-central1-a"
+    subnet_id = yandex_vpc_subnet.k8s-subnet-a.id
+    assign_public_ip = true
+  }
+}
+
+resource "yandex_mdb_postgresql_database" "fastapi_db" {
+  cluster_id = yandex_mdb_postgresql_cluster.postgres.id
+  name       = "fastapi_db"
+  owner      = yandex_mdb_postgresql_user.dbuser.name
+  depends_on = [yandex_mdb_postgresql_user.dbuser]
+}
+
+resource "yandex_mdb_postgresql_user" "dbuser" {
+  cluster_id = yandex_mdb_postgresql_cluster.postgres.id
+  name       = "dbuser"
+  password   = random_password.db_password.result
+  depends_on = [yandex_mdb_postgresql_cluster.postgres]
+}
+
+
+resource "random_password" "db_password" {
+  length  = 16
+  special = true
+}
+
 resource "yandex_lockbox_secret_version" "app-secrets-v1" {
   secret_id = yandex_lockbox_secret.app-secrets.id
   entries {
     key        = "fastapi_key"
     text_value = local.actual_fastapi_key
+  }
+  entries {
+    key        = "database_url"
+    text_value = "host=${yandex_mdb_postgresql_cluster.postgres.host[0].fqdn} port=6432 sslmode=verify-full dbname=fastapi_db user=dbuser password=${random_password.db_password.result} target_session_attrs=read-write sslrootcert=/root/.postgresql/root.crt"
   }
 
   lifecycle {
