@@ -1,0 +1,42 @@
+# Default values for fastapi-chart.
+replicaCount: 2
+
+image:
+  repository: cr.yandex/<REGISTRY_ID>/fastapi-app
+  pullPolicy: Always
+  tag: "latest"
+
+imagePullSecrets: []
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: "tryout.site"
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: "tryout-site-tls"
+      hosts:
+        - "tryout.site"
+
+externalIp: ""
+domainName: "tryout.site"
+
+fastapiKey: ""
+databaseUrl: ""
+
+migration:
+  enabled: false
+  revision: "1"
+
+logging:
+  level: "INFO"
