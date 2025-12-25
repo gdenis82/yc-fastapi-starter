@@ -1,0 +1,38 @@
+{{- if .Values.migration.enabled -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "fastapi-chart.fullname" . }}-migrate-{{ .Values.migration.revision }}
+  labels:
+    {{- include "fastapi-chart.labels" . | nindent 4 }}
+  annotations: {}
+    # Helm hooks are not used because Job is managed by deploy script
+spec:
+  template:
+    metadata:
+      labels:
+        {{- include "fastapi-chart.selectorLabels" . | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["alembic", "upgrade", "head"]
+          env:
+            - name: FASTAPI_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fastapi-chart.fullname" . }}-app-secrets
+                  key: fastapi-key
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fastapi-chart.fullname" . }}-app-secrets
+                  key: database-url
+  backoffLimit: 3
+{{- end }}
