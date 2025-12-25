@@ -2,6 +2,11 @@
 
 $ErrorActionPreference = "Stop"
 
+Write-Host "--- Step 0: Stepwise Infrastructure Preparation ---" -ForegroundColor Cyan
+if (Test-Path "prepare-infra.ps1") {
+    .\prepare-infra.ps1
+}
+
 Write-Host "--- Step 1: Getting data from Terraform ---" -ForegroundColor Cyan
 if (-not (Test-Path "terraform")) {
     Write-Error "Terraform directory not found!"
@@ -130,6 +135,30 @@ kubectl create secret generic "$RELEASE_NAME-app-secrets" `
     --from-literal=fastapi-key="$FASTAPI_KEY_FROM_LOCKBOX" `
     --from-literal=database-url="$DATABASE_URL_FROM_LOCKBOX" `
     --dry-run=client -o yaml | kubectl apply -f -
+
+Write-Host "--- Running Database Migrations ---" -ForegroundColor Cyan
+$MIGRATE_REVISION = $TAG # Use timestamp for unique job name
+$MIGRATE_JOB_FILE = "migrate-job-generated.yaml"
+
+# Generate migration job from Helm template
+helm template $RELEASE_NAME ./helm/fastapi-chart `
+    --show-only templates/migrate-job.yaml `
+    --set fullnameOverride=$RELEASE_NAME `
+    --set image.repository="cr.yandex/$REGISTRY_ID/fastapi-app" `
+    --set image.tag="$TAG" `
+    --set migration.enabled="true" `
+    --set migration.revision="$MIGRATE_REVISION" > $MIGRATE_JOB_FILE
+
+Write-Host "Applying migration job..."
+kubectl apply -f $MIGRATE_JOB_FILE
+
+Write-Host "Waiting for migration job to complete..."
+kubectl wait --for=condition=complete "job/$RELEASE_NAME-migrate-$MIGRATE_REVISION" --timeout=120s
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Migration job failed or timed out"
+    kubectl logs "job/$RELEASE_NAME-migrate-$MIGRATE_REVISION"
+    throw "Deployment aborted due to migration failure"
+}
 
 Write-Host "Deploying with Helm..." -ForegroundColor Cyan
 helm upgrade --install $RELEASE_NAME ./helm/fastapi-chart `

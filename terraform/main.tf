@@ -371,6 +371,7 @@ resource "yandex_mdb_postgresql_cluster" "postgres" {
   name        = "fastapi-db"
   environment = "PRESTABLE"
   network_id  = yandex_vpc_network.k8s-network.id
+  security_group_ids = [yandex_vpc_security_group.k8s-main-sg.id]
 
   config {
     version = 16
@@ -391,6 +392,12 @@ resource "yandex_mdb_postgresql_cluster" "postgres" {
     zone      = "ru-central1-a"
     subnet_id = yandex_vpc_subnet.k8s-subnet-a.id
     assign_public_ip = true
+  }
+
+  timeouts {
+    create = "1h30m"
+    update = "2h"
+    delete = "30m"
   }
 }
 
@@ -422,13 +429,7 @@ resource "yandex_lockbox_secret_version" "app-secrets-v1" {
   }
   entries {
     key        = "database_url"
-    text_value = "host=${yandex_mdb_postgresql_cluster.postgres.host[0].fqdn} port=6432 sslmode=verify-full dbname=fastapi_db user=dbuser password=${random_password.db_password.result} target_session_attrs=read-write sslrootcert=/root/.postgresql/root.crt"
-  }
-
-  lifecycle {
-    ignore_changes = [
-      entries
-    ]
+    text_value = "postgresql://dbuser:${random_password.db_password.result}@${yandex_mdb_postgresql_cluster.postgres.host[0].fqdn}:6432/fastapi_db?sslmode=verify-full&sslrootcert=/root/.postgresql/root.crt"
   }
 }
 
@@ -437,6 +438,10 @@ variable "fastapi_key" {
   type        = string
   sensitive   = true
   default     = ""
+}
+
+output "postgres_cluster_id" {
+  value = yandex_mdb_postgresql_cluster.postgres.id
 }
 
 output "lockbox_secret_id" {

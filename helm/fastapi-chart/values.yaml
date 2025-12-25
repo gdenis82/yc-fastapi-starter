@@ -34,5 +34,9 @@ domainName: "tryout.site"
 fastapiKey: ""
 databaseUrl: ""
 
+migration:
+  enabled: false
+  revision: "1"
+
 logging:
   level: "INFO"
