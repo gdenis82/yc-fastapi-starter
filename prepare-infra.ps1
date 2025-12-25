@@ -71,14 +71,27 @@ Write-Host "Checking PostgreSQL Cluster..." -ForegroundColor Cyan
 
 # Force untaint BEFORE any checks to prevent Terraform from planning a destruction in Step 4
 Push-Location terraform
-$stateInfo = terraform state show yandex_mdb_postgresql_cluster.postgres 2>$null
-if ($stateInfo -match "tainted") {
-    Write-Host "Resource yandex_mdb_postgresql_cluster.postgres is tainted. Untainting to prevent unnecessary destruction..." -ForegroundColor Yellow
-    terraform untaint yandex_mdb_postgresql_cluster.postgres
+try {
+    # We use a try-catch and check $LASTEXITCODE because terraform state list returns 1 if resource is not found,
+    # which PowerShell might treat as an error depending on environment settings.
+    $hasPostgresInState = terraform state list yandex_mdb_postgresql_cluster.postgres 2>$null
+    if ($LASTEXITCODE -eq 0 -and $hasPostgresInState) {
+        $stateInfo = terraform state show yandex_mdb_postgresql_cluster.postgres 2>$null
+        if ($LASTEXITCODE -eq 0 -and $stateInfo -match "tainted") {
+            Write-Host "Resource yandex_mdb_postgresql_cluster.postgres is tainted. Untainting to prevent unnecessary destruction..." -ForegroundColor Yellow
+            terraform untaint yandex_mdb_postgresql_cluster.postgres 2>$null
+        }
+    }
+} catch {
+    # Ignore errors here, it just means the resource is not in state yet
 }
 Pop-Location
 
-$dbCluster = yc managed-postgresql cluster list --format json | ConvertFrom-Json | Where-Object { $_.name -eq "fastapi-db" -and $_.status -ne "DELETING" } | Select-Object -First 1
+$dbClusterList = yc managed-postgresql cluster list --format json | ConvertFrom-Json
+$dbCluster = $null
+if ($dbClusterList) {
+    $dbCluster = $dbClusterList | Where-Object { $_.name -eq "fastapi-db" -and $_.status -ne "DELETING" } | Select-Object -First 1
+}
 $dbClusterId = $dbCluster.id
 
 if (-not $dbClusterId) {
