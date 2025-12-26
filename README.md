@@ -24,12 +24,13 @@
 │       │   └── main.py     # Точка входа
 │       ├── alembic/        # Миграции (внутри сервиса)
 │       ├── Dockerfile      # Сборка сервиса
-│       └── entrypoint.sh   # Скрипт запуска
+│       ├── entrypoint.sh   # Скрипт запуска
+│       └── .gitlab-ci.yml  # CI/CD пайплайн сервиса
 ├── helm/                   # Helm-чарт для Kubernetes
 ├── terraform/              # Инфраструктура как код (Yandex Cloud)
 ├── docker-compose.yml      # Локальная разработка
 ├── Makefile                # Удобные команды (make up, make migrate)
-├── .gitlab-ci.yml          # Настройка CI/CD
+├── .gitlab-ci.yml          # Корневой CI/CD (триггеры Child Pipelines)
 ├── deploy.ps1              # Скрипт автоматизированного деплоя
 └── DEPLOY.md               # Инструкция по развертыванию
 ```
