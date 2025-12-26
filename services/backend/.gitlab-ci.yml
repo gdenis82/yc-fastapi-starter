@@ -96,7 +96,7 @@ deploy-to-k8s:
 
     - # Running Database Migrations
       MIGRATE_REVISION=$TAG
-    - helm template $RELEASE_NAME ../../helm/fastapi-chart 
+    - helm template $RELEASE_NAME helm/fastapi-chart 
       --show-only templates/migrate-job.yaml 
       --set fullnameOverride=$RELEASE_NAME 
       --set image.repository="$APP_IMAGE" 
@@ -107,7 +107,7 @@ deploy-to-k8s:
     - kubectl wait --for=condition=complete "job/$RELEASE_NAME-migrate-$MIGRATE_REVISION" --timeout=120s
 
     - # Deploying Application
-      helm upgrade --install $RELEASE_NAME ../../helm/fastapi-chart 
+      helm upgrade --install $RELEASE_NAME helm/fastapi-chart 
       --set fullnameOverride=$RELEASE_NAME 
       --set image.repository="$APP_IMAGE" 
       --set image.tag="$TAG" 
