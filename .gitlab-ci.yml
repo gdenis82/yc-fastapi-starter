@@ -43,7 +43,11 @@ backend-build:
     - yc config set service-account-key sa-key.json
     - yc config set cloud-id $YC_CLOUD_ID
     - yc config set folder-id $YC_FOLDER_ID
-    - yc container registry configure-docker
+    - # Проверка авторизации и настройка docker
+    - yc container registry get --id $REGISTRY_ID
+    - # В некоторых случаях yc configure-docker может не сработать сразу в DinD
+    - # Используем прямую авторизацию через json-key
+    - cat sa-key.json | docker login --username json_key --password-stdin cr.yandex
   script:
     - TAG=$CI_COMMIT_SHORT_SHA
     - docker build -t $APP_IMAGE:$TAG -t $APP_IMAGE:latest ./services/backend
