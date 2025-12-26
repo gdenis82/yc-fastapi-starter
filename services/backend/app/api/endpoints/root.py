@@ -11,7 +11,7 @@ router = APIRouter()
 @router.get("/")
 async def read_root():
     logger.debug("Root endpoint called")
-    return {"message": f"Hello from {settings.PROJECT_NAME}!"}
+    return {"message": f"Hello from {settings.PROJECT_NAME}!!"}
 
 @router.get("/health")
 async def health():
