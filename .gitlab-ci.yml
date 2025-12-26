@@ -63,7 +63,7 @@ deploy-to-k8s:
     - yc config set cloud-id $YC_CLOUD_ID
     - yc config set folder-id $YC_FOLDER_ID
     - # Настройка kubectl
-    - yc managed-kubernetes cluster get-credentials --id $K8S_CLUSTER_ID --external --force
+      yc managed-kubernetes cluster get-credentials --id $K8S_CLUSTER_ID --external --force
   script:
     - TAG=$CI_COMMIT_SHORT_SHA
     - RELEASE_NAME="fastapi"
