@@ -22,7 +22,8 @@ backend-test:
   script:
     - cd services/backend
     - pip install -r requirements.txt
-    - pytest
+    - export PYTHONPATH=$PYTHONPATH:.
+    - python -m pytest
 
 backend-build:
   stage: build
