@@ -31,11 +31,11 @@ backend-build:
     - docker:24.0.5-dind
   before_script:
     - # Установка YC CLI
-    - apk add --no-cache curl bash
+      apk add --no-cache curl bash
     - curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i /usr/local/yandex-cloud -n
     - ln -s /usr/local/yandex-cloud/bin/yc /usr/local/bin/yc
     - # Авторизация в YC
-    - echo "$YC_SA_KEY" > sa-key.json
+      echo "$YC_SA_KEY" > sa-key.json
     - yc config set service-account-key sa-key.json
     - yc config set cloud-id $YC_CLOUD_ID
     - yc config set folder-id $YC_FOLDER_ID
@@ -50,15 +50,15 @@ deploy-to-k8s:
   stage: deploy
   image: alpine:3.18
   before_script:
-    - apk add --no-cache curl bash openssl
     - # Установка YC CLI, kubectl, helm
+      apk add --no-cache curl bash openssl
     - curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i /usr/local/yandex-cloud -n
     - ln -s /usr/local/yandex-cloud/bin/yc /usr/local/bin/yc
     - yc components install kubectl --quiet
     - ln -s /usr/local/yandex-cloud/bin/kubectl /usr/local/bin/kubectl
     - curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
     - # Авторизация
-    - echo "$YC_SA_KEY" > sa-key.json
+      echo "$YC_SA_KEY" > sa-key.json
     - yc config set service-account-key sa-key.json
     - yc config set cloud-id $YC_CLOUD_ID
     - yc config set folder-id $YC_FOLDER_ID
