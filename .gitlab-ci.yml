@@ -57,12 +57,13 @@ deploy-to-k8s:
   stage: deploy
   image: alpine:3.18
   before_script:
-    - # Установка YC CLI, kubectl, helm
-      apk add --no-cache curl bash openssl
+    - # Установка зависимостей: YC CLI, kubectl, helm, jq
+      apk add --no-cache curl bash openssl jq
+    - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    - chmod +x kubectl
+    - mv kubectl /usr/local/bin/
     - curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i /usr/local/yandex-cloud -n
     - ln -s /usr/local/yandex-cloud/bin/yc /usr/local/bin/yc
-    - yc components install kubectl --quiet
-    - ln -s /usr/local/yandex-cloud/bin/kubectl /usr/local/bin/kubectl
     - curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
     - # Авторизация
       if [ -f "$YC_SA_KEY" ]; then cat "$YC_SA_KEY" > sa-key.json; else echo "$YC_SA_KEY" > sa-key.json; fi
@@ -92,12 +93,8 @@ deploy-to-k8s:
     - echo "--- Installing cert-manager ---"
     - kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.2/cert-manager.yaml
     
-    - echo "--- Updating Secrets from Lockbox ---"
+    - # Updating Secrets from Lockbox
     - PAYLOAD=$(yc lockbox payload get $LOCKBOX_ID --format json)
-    - FASTAPI_KEY=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "fastapi_key") | .text_value')
-    - DATABASE_URL=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "database_url") | .text_value')
-    # Установка jq если его нет (alpine:3.18 может не иметь)
-    - if ! command -v jq &> /dev/null; then apk add --no-cache jq; fi
     - FASTAPI_KEY=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "fastapi_key") | .text_value')
     - DATABASE_URL=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "database_url") | .text_value')
     - kubectl create secret generic "$RELEASE_NAME-app-secrets" 
