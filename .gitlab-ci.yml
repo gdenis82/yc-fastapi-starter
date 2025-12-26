@@ -77,8 +77,8 @@ deploy-to-k8s:
     - RELEASE_NAME="fastapi"
     - DOMAIN_CLEAN=$(echo $DOMAIN_NAME | sed 's/\.$//')
     
-    - echo "--- Configuring Ingress NGINX ---"
-    - helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+    - # Configuring Ingress NGINX
+      helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
     - helm repo update
     - kubectl create namespace ingress-nginx --dry-run=client -o yaml | kubectl apply -f -
     - helm upgrade --install ingress-nginx ingress-nginx 
@@ -90,11 +90,11 @@ deploy-to-k8s:
       --set controller.service.externalTrafficPolicy=Local 
       --wait
 
-    - echo "--- Installing cert-manager ---"
-    - kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.2/cert-manager.yaml
+    - # Installing cert-manager
+      kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.2/cert-manager.yaml
     
     - # Updating Secrets from Lockbox
-    - PAYLOAD=$(yc lockbox payload get $LOCKBOX_ID --format json)
+      PAYLOAD=$(yc lockbox payload get $LOCKBOX_ID --format json)
     - FASTAPI_KEY=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "fastapi_key") | .text_value')
     - DATABASE_URL=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "database_url") | .text_value')
     - kubectl create secret generic "$RELEASE_NAME-app-secrets" 
@@ -102,8 +102,8 @@ deploy-to-k8s:
       --from-literal=database-url="$DATABASE_URL" 
       --dry-run=client -o yaml | kubectl apply -f -
 
-    - echo "--- Running Database Migrations ---"
-    - MIGRATE_REVISION=$TAG
+    - # Running Database Migrations
+      MIGRATE_REVISION=$TAG
     - helm template $RELEASE_NAME ./helm/fastapi-chart 
       --show-only templates/migrate-job.yaml 
       --set fullnameOverride=$RELEASE_NAME 
@@ -114,8 +114,8 @@ deploy-to-k8s:
     - kubectl apply -f migrate-job.yaml
     - kubectl wait --for=condition=complete "job/$RELEASE_NAME-migrate-$MIGRATE_REVISION" --timeout=120s
 
-    - echo "--- Deploying Application ---"
-    - helm upgrade --install $RELEASE_NAME ./helm/fastapi-chart 
+    - # Deploying Application
+      helm upgrade --install $RELEASE_NAME ./helm/fastapi-chart 
       --set fullnameOverride=$RELEASE_NAME 
       --set image.repository="$APP_IMAGE" 
       --set image.tag="$TAG" 
