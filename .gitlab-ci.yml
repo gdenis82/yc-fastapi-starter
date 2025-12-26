@@ -39,7 +39,7 @@ backend-build:
     - curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i /usr/local/yandex-cloud -n
     - ln -s /usr/local/yandex-cloud/bin/yc /usr/local/bin/yc
     - # Авторизация в YC
-      echo "$YC_SA_KEY" > sa-key.json
+      if [ -f "$YC_SA_KEY" ]; then cat "$YC_SA_KEY" > sa-key.json; else echo "$YC_SA_KEY" > sa-key.json; fi
     - yc config set service-account-key sa-key.json
     - yc config set cloud-id $YC_CLOUD_ID
     - yc config set folder-id $YC_FOLDER_ID
@@ -62,7 +62,7 @@ deploy-to-k8s:
     - ln -s /usr/local/yandex-cloud/bin/kubectl /usr/local/bin/kubectl
     - curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
     - # Авторизация
-      echo "$YC_SA_KEY" > sa-key.json
+      if [ -f "$YC_SA_KEY" ]; then cat "$YC_SA_KEY" > sa-key.json; else echo "$YC_SA_KEY" > sa-key.json; fi
     - yc config set service-account-key sa-key.json
     - yc config set cloud-id $YC_CLOUD_ID
     - yc config set folder-id $YC_FOLDER_ID
