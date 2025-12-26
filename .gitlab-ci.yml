@@ -1,7 +1,11 @@
-stages:
-  - test
-  - build
-  - deploy
+workflow:
+  rules:
+    - changes:
+        - "**/*.md"
+        - ".gitignore"
+        - "LICENSE"
+      when: never
+    - when: always
 
 variables:
   # Эти переменные должны быть настроены в GitLab CI/CD Variables
@@ -14,117 +18,15 @@ variables:
   # DOMAIN_NAME: Доменное имя
   # EXTERNAL_IP: Статический IP для Ingress
   
-  APP_IMAGE: "cr.yandex/$REGISTRY_ID/fastapi-app"
+.service_trigger:
+  rules:
+    - changes:
+        - "$SERVICE_PATH/**/*"
+  trigger:
+    include: "$SERVICE_PATH/.gitlab-ci.yml"
+    strategy: depend
 
-backend-test:
-  stage: test
-  image: python:3.12-slim
+backend-service:
+  extends: .service_trigger
   variables:
-    FASTAPI_KEY: "test-key-for-ci"
-    DATABASE_URL: "sqlite:///:memory:"
-  script:
-    - cd services/backend
-    - pip install -r requirements.txt
-    - export PYTHONPATH=$PYTHONPATH:.
-    - python -m pytest
-
-backend-build:
-  stage: build
-  image: docker:24.0.5
-  services:
-    - docker:24.0.5-dind
-  before_script:
-    - # Установка YC CLI
-      apk add --no-cache curl bash
-    - curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i /usr/local/yandex-cloud -n
-    - ln -s /usr/local/yandex-cloud/bin/yc /usr/local/bin/yc
-    - # Авторизация в YC
-      if [ -f "$YC_SA_KEY" ]; then cat "$YC_SA_KEY" > sa-key.json; else echo "$YC_SA_KEY" > sa-key.json; fi
-    - yc config set service-account-key sa-key.json
-    - yc config set cloud-id $YC_CLOUD_ID
-    - yc config set folder-id $YC_FOLDER_ID
-    - # Проверка авторизации и настройка docker
-      yc container registry get --id $REGISTRY_ID
-    - # В некоторых случаях yc configure-docker может не сработать сразу в DinD. Используем прямую авторизацию через json-key
-      cat sa-key.json | docker login --username json_key --password-stdin cr.yandex
-  script:
-    - TAG=$CI_COMMIT_SHORT_SHA
-    - docker build -t $APP_IMAGE:$TAG -t $APP_IMAGE:latest ./services/backend
-    - docker push $APP_IMAGE:$TAG
-    - docker push $APP_IMAGE:latest
-
-deploy-to-k8s:
-  stage: deploy
-  image: alpine:3.18
-  before_script:
-    - # Установка зависимостей: YC CLI, kubectl, helm, jq
-      apk add --no-cache curl bash openssl jq
-    - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-    - chmod +x kubectl
-    - mv kubectl /usr/local/bin/
-    - curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i /usr/local/yandex-cloud -n
-    - ln -s /usr/local/yandex-cloud/bin/yc /usr/local/bin/yc
-    - curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-    - # Авторизация
-      if [ -f "$YC_SA_KEY" ]; then cat "$YC_SA_KEY" > sa-key.json; else echo "$YC_SA_KEY" > sa-key.json; fi
-    - yc config set service-account-key sa-key.json
-    - yc config set cloud-id $YC_CLOUD_ID
-    - yc config set folder-id $YC_FOLDER_ID
-    - # Настройка kubectl
-      yc managed-kubernetes cluster get-credentials --id $K8S_CLUSTER_ID --external --force
-  script:
-    - TAG=$CI_COMMIT_SHORT_SHA
-    - RELEASE_NAME="fastapi"
-    - DOMAIN_CLEAN=$(echo $DOMAIN_NAME | sed 's/\.$//')
-    
-    - # Configuring Ingress NGINX
-      helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-    - helm repo update
-    - kubectl create namespace ingress-nginx --dry-run=client -o yaml | kubectl apply -f -
-    - helm upgrade --install ingress-nginx ingress-nginx 
-      --repo https://kubernetes.github.io/ingress-nginx 
-      --namespace ingress-nginx 
-      --set controller.service.type=LoadBalancer 
-      --set controller.service.loadBalancerIP="$EXTERNAL_IP" 
-      --set controller.service.annotations."service\.beta\.kubernetes\.io/yandex-cloud-load-balancer-type"=external 
-      --set controller.service.externalTrafficPolicy=Local 
-      --wait
-
-    - # Installing cert-manager
-      kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.2/cert-manager.yaml
-    
-    - # Updating Secrets from Lockbox
-      PAYLOAD=$(yc lockbox payload get $LOCKBOX_ID --format json)
-    - FASTAPI_KEY=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "fastapi_key") | .text_value')
-    - DATABASE_URL=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "database_url") | .text_value')
-    - kubectl create secret generic "$RELEASE_NAME-app-secrets" 
-      --from-literal=fastapi-key="$FASTAPI_KEY" 
-      --from-literal=database-url="$DATABASE_URL" 
-      --dry-run=client -o yaml | kubectl apply -f -
-
-    - # Running Database Migrations
-      MIGRATE_REVISION=$TAG
-    - helm template $RELEASE_NAME ./helm/fastapi-chart 
-      --show-only templates/migrate-job.yaml 
-      --set fullnameOverride=$RELEASE_NAME 
-      --set image.repository="$APP_IMAGE" 
-      --set image.tag="$TAG" 
-      --set migration.enabled="true" 
-      --set migration.revision="$MIGRATE_REVISION" > migrate-job.yaml
-    - kubectl apply -f migrate-job.yaml
-    - kubectl wait --for=condition=complete "job/$RELEASE_NAME-migrate-$MIGRATE_REVISION" --timeout=120s
-
-    - # Deploying Application
-      helm upgrade --install $RELEASE_NAME ./helm/fastapi-chart 
-      --set fullnameOverride=$RELEASE_NAME 
-      --set image.repository="$APP_IMAGE" 
-      --set image.tag="$TAG" 
-      --set externalIp="$EXTERNAL_IP" 
-      --set domainName="$DOMAIN_CLEAN" 
-      --set logging.level="INFO" 
-      --set ingress.className="nginx" 
-      --timeout 5m 
-      --wait 
-      --wait-for-jobs
-  only:
-    - main
+    SERVICE_PATH: "services/backend"
