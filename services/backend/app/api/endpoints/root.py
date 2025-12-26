@@ -9,6 +9,7 @@ import psycopg2
 router = APIRouter()
 
 @router.get("/")
+@router.get("/index")
 async def read_root():
     logger.debug("Root endpoint called")
     return {"message": f"Hello from {settings.PROJECT_NAME}!"}
