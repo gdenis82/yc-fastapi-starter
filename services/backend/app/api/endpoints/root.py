@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logger import logger
 from app.core.config import settings
 from app.db.session import get_db
@@ -19,15 +19,16 @@ async def health():
     return {"status": "ok"}
 
 @router.get("/db-check")
-async def db_check(db: Session = Depends(get_db)):
+async def db_check(db: AsyncSession = Depends(get_db)):
     if not settings.DATABASE_URL:
         return {"status": "error", "message": "DATABASE_URL is not set"}
     
     try:
         # Check using SQLAlchemy session
         from sqlalchemy import text
-        result = db.execute(text("SELECT version();")).fetchone()
-        return {"status": "ok", "db_version": result[0]}
+        result = await db.execute(text("SELECT version();"))
+        version = result.fetchone()
+        return {"status": "ok", "db_version": version[0]}
     except Exception as e:
         logger.error(f"Database connection error: {e}")
         return {"status": "error", "message": str(e)}
