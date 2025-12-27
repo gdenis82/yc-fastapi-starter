@@ -2,15 +2,16 @@ services:
   backend:
     build:
       context: ./services/backend
-    env_file:
-      - .env
     ports:
       - "8000:8000"
+    networks:
+      - common-network
     depends_on:
       db:
         condition: service_healthy
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
+      - FASTAPI_KEY=secret-key
 
   db:
     image: postgres:16-alpine
@@ -20,13 +21,31 @@ services:
       - POSTGRES_DB=postgres
     ports:
       - "5433:5432"
+    networks:
+      - common-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+  adminer:
+    image: adminer
+    restart: unless-stopped
+    depends_on:
+      - db
+    ports:
+      - "8089:8080"
+    networks:
+      - common-network
+
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    networks:
+      - common-network
+
+networks:
+  common-network:
+    driver: bridge
