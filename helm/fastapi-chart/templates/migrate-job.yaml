@@ -24,11 +24,11 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["alembic", "upgrade", "head"]
           env:
-            - name: FASTAPI_KEY
+            - name: SECRET_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "fastapi-chart.fullname" . }}-app-secrets
-                  key: fastapi-key
+                  key: secret-key
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
