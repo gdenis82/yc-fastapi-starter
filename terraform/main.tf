@@ -368,14 +368,14 @@ resource "yandex_dns_recordset" "rs1" {
   data    = [yandex_vpc_address.addr.external_ipv4_address[0].address]
 }
 
-# --- Password for FastAPI Key ---
-resource "random_password" "fastapi_key" {
+# --- Password for Secret Key ---
+resource "random_password" "secret_key" {
   length           = 32
   special          = true
 }
 
 locals {
-  actual_fastapi_key = var.fastapi_key != "" ? var.fastapi_key : random_password.fastapi_key.result
+  actual_secret_key = var.secret_key != "" ? var.secret_key : random_password.secret_key.result
 }
 
 # --- Yandex Lockbox Secret Container ---
@@ -445,8 +445,8 @@ resource "random_password" "db_password" {
 resource "yandex_lockbox_secret_version" "app-secrets-v1" {
   secret_id = yandex_lockbox_secret.app-secrets.id
   entries {
-    key        = "fastapi_key"
-    text_value = local.actual_fastapi_key
+    key        = "secret_key"
+    text_value = local.actual_secret_key
   }
   entries {
     key        = "database_url"
@@ -455,7 +455,7 @@ resource "yandex_lockbox_secret_version" "app-secrets-v1" {
 }
 
 # --- Additional Input Variables and Outputs ---
-variable "fastapi_key" {
+variable "secret_key" {
   description = "Secret key for FastAPI application (if empty, a random one will be generated)"
   type        = string
   sensitive   = true
