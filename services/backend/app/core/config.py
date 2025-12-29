@@ -9,10 +9,6 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
-    GITHUB_CLIENT_ID: str = ""
-    GITHUB_CLIENT_SECRET: str = ""
-    GITHUB_REDIRECT_URI: str = "http://localhost:3000/auth/callback/github"
-    
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
     
     model_config = SettingsConfigDict(case_sensitive=True, env_file=".env")
