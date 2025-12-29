@@ -58,7 +58,7 @@
 **Этап 2: Настройка Kubernetes и секретов**
 - Конфигурируется `kubectl`.
 - Устанавливаются **Ingress NGINX** и **cert-manager**.
-- Из **Lockbox** извлекаются `DATABASE_URL` и `FASTAPI_KEY`, которые затем создаются в виде K8s Secret.
+- Из **Lockbox** извлекаются `DATABASE_URL` и `SECRET_KEY`, которые затем создаются в виде K8s Secret.
 
 **Этап 3: Миграции базы данных (Alembic)**
 - Перед обновлением приложения запускается **Kubernetes Job** для выполнения миграций (`alembic upgrade head`).
