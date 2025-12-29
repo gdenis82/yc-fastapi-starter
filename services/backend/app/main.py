@@ -5,14 +5,10 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.core.logger import logger
 from app.api.api import api_router
-from app.db.session import AsyncSessionLocal
-from app.db.init_db import init_db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup logic
-    async with AsyncSessionLocal() as db:
-        await init_db(db)
     logger.info("Application startup complete.")
     yield
     # Shutdown logic
