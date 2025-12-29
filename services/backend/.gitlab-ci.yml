@@ -11,7 +11,7 @@ backend-test:
   stage: test
   image: python:3.12-slim
   variables:
-    FASTAPI_KEY: "test-key-for-ci"
+    SECRET_KEY: "test-key-for-ci"
     DATABASE_URL: "sqlite:///:memory:"
   script:
     - cd services/backend
@@ -87,10 +87,10 @@ deploy-to-k8s:
     
     - # Updating Secrets from Lockbox
       PAYLOAD=$(yc lockbox payload get $LOCKBOX_ID --format json)
-    - FASTAPI_KEY=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "fastapi_key") | .text_value')
+    - SECRET_KEY=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "secret_key") | .text_value')
     - DATABASE_URL=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "database_url") | .text_value')
     - kubectl create secret generic "$RELEASE_NAME-app-secrets" 
-      --from-literal=fastapi-key="$FASTAPI_KEY" 
+      --from-literal=secret-key="$SECRET_KEY" 
       --from-literal=database-url="$DATABASE_URL" 
       --dry-run=client -o yaml | kubectl apply -f -
 
