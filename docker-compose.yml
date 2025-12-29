@@ -4,6 +4,7 @@ services:
       context: ./services/backend
     ports:
       - "8000:8000"
+    restart: unless-stopped
     volumes:
       - ./services/backend:/app
     networks:
@@ -20,6 +21,7 @@ services:
       context: ./services/frontend
     ports:
       - "3000:3000"
+    restart: unless-stopped
     networks:
       - common-network
     environment:
@@ -29,6 +31,7 @@ services:
 
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
