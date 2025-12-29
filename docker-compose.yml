@@ -4,6 +4,8 @@ services:
       context: ./services/backend
     ports:
       - "8000:8000"
+    volumes:
+      - ./services/backend:/app
     networks:
       - common-network
     depends_on:
@@ -11,7 +13,19 @@ services:
         condition: service_healthy
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
-      - FASTAPI_KEY=secret-key
+      - SECRET_KEY=secret-key
+
+  frontend:
+    build:
+      context: ./services/frontend
+    ports:
+      - "3000:3000"
+    networks:
+      - common-network
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
 
   db:
     image: postgres:16-alpine
@@ -36,13 +50,6 @@ services:
       - db
     ports:
       - "8089:8080"
-    networks:
-      - common-network
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
     networks:
       - common-network
 
