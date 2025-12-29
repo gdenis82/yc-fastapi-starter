@@ -19,8 +19,5 @@ if not logger.handlers:
     )
     logger.addHandler(handler)
 
-# Настройка логирования для uvicorn/gunicorn, если нужно
-logging.getLogger("uvicorn.access").handlers = logger.handlers
-logging.getLogger("uvicorn.error").handlers = logger.handlers
 logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
