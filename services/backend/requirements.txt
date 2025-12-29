@@ -9,3 +9,8 @@ python-dotenv
 psycopg2-binary
 pytest
 httpx
+python-jose[cryptography]
+passlib[bcrypt,argon2]
+argon2-cffi
+python-multipart
+email-validator
