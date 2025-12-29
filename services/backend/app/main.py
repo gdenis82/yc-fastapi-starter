@@ -1,12 +1,18 @@
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 import time
 from contextlib import asynccontextmanager
+from app.core.config import settings
 from app.core.logger import logger
 from app.api.api import api_router
+from app.db.session import AsyncSessionLocal
+from app.db.init_db import init_db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup logic
+    async with AsyncSessionLocal() as db:
+        await init_db(db)
     logger.info("Application startup complete.")
     yield
     # Shutdown logic
@@ -21,7 +27,16 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def log_requests(request: Request, call_next):
         start_time = time.time()
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception as e:
+            logger.exception(f"Unhandled exception during request: {e}")
+            from fastapi.responses import JSONResponse
+            response = JSONResponse(
+                status_code=500,
+                content={"detail": "Internal Server Error"}
+            )
+        
         duration = time.time() - start_time
         logger.info(
             f"Method: {request.method} Path: {request.url.path} "
@@ -29,6 +44,15 @@ def create_app() -> FastAPI:
         )
         return response
 
+    # Configure CORS - added AFTER other middlewares to be processed FIRST for responses
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    
     app.include_router(api_router)
     return app
 
