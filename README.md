@@ -38,3 +38,4 @@
 ## Развертывание
 1. **Локальное развертывание (Terraform + PowerShell)**: Инструкция в файле [DEPLOY.md](DEPLOY.md).
 2. **Автоматизация через GitLab CI/CD**: Инструкция в файле [GITLAB_CI_SETUP.md](GITLAB_CI_SETUP.md).
+
