@@ -33,9 +33,9 @@ Dockerfile.dev
 .gitlab-ci.yml
 
 # Конфигурации и типизация
-eslint.config.mjs
-components.json
-next-env.d.ts
+# eslint.config.mjs
+# components.json
+# next-env.d.ts
 *.tsbuildinfo
 
 # Тесты и покрытие
