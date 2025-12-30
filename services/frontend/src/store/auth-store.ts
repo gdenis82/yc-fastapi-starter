@@ -4,7 +4,7 @@ import Cookies from 'js-cookie';
 interface User {
   id: string;
   email: string;
-  name?: string;
+  username: string;
   role: string;
   role_id?: number;
   role_obj?: {
