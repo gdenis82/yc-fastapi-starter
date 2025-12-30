@@ -1,0 +1,49 @@
+{{- if .Values.ingress.enabled -}}
+{{- $fullName := include "frontend-chart.fullname" . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "frontend-chart.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- $domainName := .Values.domainName -}}
+  {{- if or .Values.ingress.tls .Values.domainName }}
+  tls:
+    {{- if .Values.ingress.tls }}
+    {{- range .Values.ingress.tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ . | default $domainName | quote }}
+        {{- end }}
+      secretName: {{ .secretName | default (printf "%s-tls" (replace "." "-" $domainName)) | quote }}
+    {{- end }}
+    {{- else }}
+    - hosts:
+        - {{ $domainName | quote }}
+      secretName: {{ printf "%s-tls" (replace "." "-" $domainName) | quote }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ .host | default $domainName | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ $fullName }}
+                port:
+                  number: {{ $.Values.service.port }}
+          {{- end }}
+    {{- end }}
+{{- end }}
