@@ -30,13 +30,14 @@ async def read_users(
     # Filtering
     if search:
         search_filter = f"%{search}%"
-        query = query.where(
-            or_(
-                User.username.ilike(search_filter),
-                User.email.ilike(search_filter),
-                User.name.ilike(search_filter) if hasattr(User, 'name') else User.username.ilike(search_filter)
-            )
-        )
+        filters = [
+            User.username.ilike(search_filter),
+            User.email.ilike(search_filter),
+        ]
+        if hasattr(User, 'name'):
+            filters.append(User.name.ilike(search_filter))
+            
+        query = query.where(or_(*filters))
     
     if role:
         query = query.join(User.role_obj).where(Role.name == role)
@@ -53,7 +54,8 @@ async def read_users(
             query = query.order_by(attr.asc())
     
     # Pagination
-    total_query = select(func.count()).select_from(query.subquery())
+    # Count total users before pagination but after filtering
+    total_query = select(func.count(User.id)).select_from(query.order_by(None).subquery())
     total_result = await db.execute(total_query)
     total = total_result.scalar()
     
