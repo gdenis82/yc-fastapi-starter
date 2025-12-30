@@ -66,21 +66,37 @@ Write-Host "EXTERNAL_IP: $EXTERNAL_IP"
 $DOMAIN_CLEAN = $DOMAIN_NAME.TrimEnd('.')
 Write-Host "Domain (cleaned): $DOMAIN_CLEAN"
 
-Write-Host "`n--- Step 2: Build and Push Docker Image ---" -ForegroundColor Cyan
+Write-Host "`n--- Step 2: Build and Push Docker Images ---" -ForegroundColor Cyan
 yc container registry configure-docker
 $TAG = Get-Date -Format "yyyyMMdd-HHmmss"
-$IMAGE_NAME = "cr.yandex/$REGISTRY_ID/fastapi-app:$TAG"
-$LATEST_NAME = "cr.yandex/$REGISTRY_ID/fastapi-app:latest"
 
-Write-Host "Building image $IMAGE_NAME..."
-docker build -t $IMAGE_NAME -t $LATEST_NAME ./services/backend
-if ($LASTEXITCODE -ne 0) { throw "Docker build failed" }
+# Backend
+$BACKEND_IMAGE_NAME = "cr.yandex/$REGISTRY_ID/fastapi-app:$TAG"
+$BACKEND_LATEST_NAME = "cr.yandex/$REGISTRY_ID/fastapi-app:latest"
 
-Write-Host "Pushing images to Registry..."
-docker push $IMAGE_NAME
-if ($LASTEXITCODE -ne 0) { throw "Docker push failed for $IMAGE_NAME" }
-docker push $LATEST_NAME
-if ($LASTEXITCODE -ne 0) { throw "Docker push failed for $LATEST_NAME" }
+Write-Host "Building backend image $BACKEND_IMAGE_NAME..."
+docker build -t $BACKEND_IMAGE_NAME -t $BACKEND_LATEST_NAME ./services/backend
+if ($LASTEXITCODE -ne 0) { throw "Backend Docker build failed" }
+
+Write-Host "Pushing backend images to Registry..."
+docker push $BACKEND_IMAGE_NAME
+if ($LASTEXITCODE -ne 0) { throw "Backend Docker push failed for $BACKEND_IMAGE_NAME" }
+docker push $BACKEND_LATEST_NAME
+if ($LASTEXITCODE -ne 0) { throw "Backend Docker push failed for $BACKEND_LATEST_NAME" }
+
+# Frontend
+$FRONTEND_IMAGE_NAME = "cr.yandex/$REGISTRY_ID/frontend-app:$TAG"
+$FRONTEND_LATEST_NAME = "cr.yandex/$REGISTRY_ID/frontend-app:latest"
+
+Write-Host "Building frontend image $FRONTEND_IMAGE_NAME..."
+docker build -t $FRONTEND_IMAGE_NAME -t $FRONTEND_LATEST_NAME ./services/frontend
+if ($LASTEXITCODE -ne 0) { throw "Frontend Docker build failed" }
+
+Write-Host "Pushing frontend images to Registry..."
+docker push $FRONTEND_IMAGE_NAME
+if ($LASTEXITCODE -ne 0) { throw "Frontend Docker push failed for $FRONTEND_IMAGE_NAME" }
+docker push $FRONTEND_LATEST_NAME
+if ($LASTEXITCODE -ne 0) { throw "Frontend Docker push failed for $FRONTEND_LATEST_NAME" }
 
 Write-Host "`n--- Step 3: Kubernetes Setup and Deploy ---" -ForegroundColor Cyan
 yc managed-kubernetes cluster get-credentials --id $CLUSTER_ID --external --force
@@ -104,19 +120,13 @@ helm upgrade --install ingress-nginx ingress-nginx `
 Write-Host "Installing cert-manager (if not installed)..."
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.2/cert-manager.yaml
 
-$RELEASE_NAME = "fastapi"
-
 Write-Host "Waiting for cert-manager readiness..."
-Start-Sleep -Seconds 30
+Start-Sleep -Seconds 20
 
-Write-Host "Fixing ClusterIssuer ownership for Helm (if exists)..."
-$issuerExists = kubectl get clusterissuer letsencrypt-prod -o name --ignore-not-found
-if ($issuerExists) {
-    Write-Host "ClusterIssuer letsencrypt-prod found. Adding Helm ownership labels and annotations..."
-    kubectl label clusterissuer letsencrypt-prod app.kubernetes.io/managed-by=Helm --overwrite
-    kubectl annotate clusterissuer letsencrypt-prod meta.helm.sh/release-name=$RELEASE_NAME --overwrite
-    kubectl annotate clusterissuer letsencrypt-prod meta.helm.sh/release-namespace=default --overwrite
-}
+Write-Host "Applying ClusterIssuer..."
+kubectl apply -f helm\cluster-issuer.yaml
+
+$RELEASE_NAME = "fastapi"
 
 # Determine Secret key and Database URL from Lockbox
 $payload = yc lockbox payload get $LOCKBOX_ID --format json | ConvertFrom-Json
@@ -153,14 +163,29 @@ Write-Host "Applying migration job..."
 kubectl apply -f $MIGRATE_JOB_FILE
 
 Write-Host "Waiting for migration job to complete..."
-kubectl wait --for=condition=complete "job/$RELEASE_NAME-migrate-$MIGRATE_REVISION" --timeout=120s
+$waitTimeout = "300s" # Increased timeout to 5 minutes
+kubectl wait --for=condition=complete "job/$RELEASE_NAME-migrate-$MIGRATE_REVISION" --timeout=$waitTimeout
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "Migration job failed or timed out"
-    kubectl logs "job/$RELEASE_NAME-migrate-$MIGRATE_REVISION"
+    Write-Host "`n[ERROR] Migration job failed or timed out!" -ForegroundColor Red
+    
+    Write-Host "`n--- Job Status ---"
+    kubectl get job "$RELEASE_NAME-migrate-$MIGRATE_REVISION"
+    kubectl describe job "$RELEASE_NAME-migrate-$MIGRATE_REVISION"
+    
+    Write-Host "`n--- Pods associated with Job ---"
+    $jobPods = kubectl get pods -l "job-name=$RELEASE_NAME-migrate-$MIGRATE_REVISION" -o jsonpath='{.items[*].metadata.name}'
+    foreach ($podName in $jobPods.Split(' ')) {
+        if ($podName) {
+            Write-Host "`nLogs for pod: $podName" -ForegroundColor Yellow
+            kubectl logs $podName
+            Write-Host "--- End of logs for $podName ---"
+        }
+    }
+    
     throw "Deployment aborted due to migration failure"
 }
 
-Write-Host "Deploying with Helm..." -ForegroundColor Cyan
+Write-Host "Deploying Backend with Helm..." -ForegroundColor Cyan
 helm upgrade --install $RELEASE_NAME ./helm/fastapi-chart `
     --set fullnameOverride=$RELEASE_NAME `
     --set image.repository="cr.yandex/$REGISTRY_ID/fastapi-app" `
@@ -173,6 +198,18 @@ helm upgrade --install $RELEASE_NAME ./helm/fastapi-chart `
     --wait `
     --wait-for-jobs
 
+Write-Host "Deploying Frontend with Helm..." -ForegroundColor Cyan
+$FRONTEND_RELEASE_NAME = "frontend"
+helm upgrade --install $FRONTEND_RELEASE_NAME ./helm/frontend-chart `
+    --set fullnameOverride=$FRONTEND_RELEASE_NAME `
+    --set image.repository="cr.yandex/$REGISTRY_ID/frontend-app" `
+    --set image.tag="$TAG" `
+    --set externalIp="$EXTERNAL_IP" `
+    --set domainName="$DOMAIN_CLEAN" `
+    --set ingress.className="nginx" `
+    --timeout 5m `
+    --wait
+
 # Ingress NGINX and its IP are now handled during setup step
 # No need to patch again here unless we want to be sure
 # kubectl patch svc ingress-nginx-controller -n ingress-nginx -p $patch
@@ -183,7 +220,7 @@ $ingress_ip = ""
 for ($i = 0; $i -lt 12; $i++) {
     $ingress_ip = kubectl get ingress $RELEASE_NAME -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>$null
     if ($ingress_ip) {
-        Write-Host "Ingress IP: $ingress_ip" -ForegroundColor Green
+        Write-Host "Unified Ingress IP: $ingress_ip" -ForegroundColor Green
         break
     }
     Write-Host "." -NoNewline
@@ -192,7 +229,7 @@ for ($i = 0; $i -lt 12; $i++) {
 Write-Host ""
 
 if (-not $ingress_ip) {
-    Write-Warning "Ingress still has no IP or not found. Check 'kubectl get ingress' and 'kubectl describe svc -n ingress-nginx ingress-nginx-controller'"
+    Write-Warning "Ingress still has no IP or not found."
 }
 
 Write-Host "`n--- Final Status ---" -ForegroundColor Green
