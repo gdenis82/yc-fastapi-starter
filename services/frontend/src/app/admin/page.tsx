@@ -34,7 +34,7 @@ export default function AdminPage() {
   const [sort, setSort] = useState('name:asc');
 
   useEffect(() => {
-    if (!isAuthLoading && (!user || user.role !== 'admin')) {
+    if (!isAuthLoading && (!user || user.role_obj?.name !== 'admin')) {
       router.push('/');
     }
   }, [user, isAuthLoading, router]);
@@ -61,10 +61,10 @@ export default function AdminPage() {
       const response = await apiClient.get(`/admin/users?${params.toString()}`);
       return response.data;
     },
-    enabled: !!user && user.role === 'admin',
+    enabled: !!user && user.role_obj?.name === 'admin',
   });
 
-  if (isAuthLoading || !user || user.role !== 'admin') {
+  if (isAuthLoading || !user || user.role_obj?.name !== 'admin') {
     return <div className="container py-20 text-center">Checking permissions...</div>;
   }
 
@@ -143,7 +143,7 @@ export default function AdminPage() {
                 <TableRow key={u.id}>
                   <TableCell>{u.name || 'N/A'}</TableCell>
                   <TableCell>{u.email}</TableCell>
-                  <TableCell>{u.role}</TableCell>
+                  <TableCell>{u.role_obj?.name || u.role}</TableCell>
                   <TableCell>
                     <Button variant="ghost" size="sm">Edit</Button>
                   </TableCell>

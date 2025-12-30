@@ -25,7 +25,7 @@ export function Header() {
           <nav className="hidden md:flex items-center gap-4 text-sm font-medium">
             <Link href="/about">About</Link>
             <Link href="/contacts">Contacts</Link>
-            {user?.role === 'admin' && (
+            {user?.role_obj?.name === 'admin' && (
               <Link href="/admin">Admin</Link>
             )}
           </nav>
@@ -43,7 +43,7 @@ export function Header() {
                 <DropdownMenuItem asChild>
                   <Link href="/profile">Profile</Link>
                 </DropdownMenuItem>
-                {user?.role === 'admin' && (
+                {user?.role_obj?.name === 'admin' && (
                   <DropdownMenuItem asChild>
                     <Link href="/admin">Admin Panel</Link>
                   </DropdownMenuItem>
