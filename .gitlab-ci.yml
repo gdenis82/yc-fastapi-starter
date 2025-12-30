@@ -30,3 +30,8 @@ backend-service:
   extends: .service_trigger
   variables:
     SERVICE_PATH: "services/backend"
+
+frontend-service:
+  extends: .service_trigger
+  variables:
+    SERVICE_PATH: "services/frontend"

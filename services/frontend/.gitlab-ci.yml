@@ -1,0 +1,71 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  # Наследуются из родительского пайплайна или настроек проекта
+  APP_IMAGE: "cr.yandex/$REGISTRY_ID/frontend-app"
+
+frontend-build:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - docker:24.0.5-dind
+  before_script:
+    - # Установка YC CLI
+      apk add --no-cache curl bash
+    - curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i /usr/local/yandex-cloud -n
+    - ln -s /usr/local/yandex-cloud/bin/yc /usr/local/bin/yc
+    - # Авторизация в YC
+      if [ -f "$YC_SA_KEY" ]; then cat "$YC_SA_KEY" > sa-key.json; else echo "$YC_SA_KEY" > sa-key.json; fi
+    - yc config set service-account-key sa-key.json
+    - yc config set cloud-id $YC_CLOUD_ID
+    - yc config set folder-id $YC_FOLDER_ID
+    - # Проверка авторизации и настройка docker
+      yc container registry get --id $REGISTRY_ID
+    - # Авторизация docker
+      cat sa-key.json | docker login --username json_key --password-stdin cr.yandex
+  script:
+    - cd services/frontend
+    - TAG=$CI_COMMIT_SHORT_SHA
+    - docker build -t $APP_IMAGE:$TAG -t $APP_IMAGE:latest .
+    - docker push $APP_IMAGE:$TAG
+    - docker push $APP_IMAGE:latest
+
+deploy-frontend:
+  stage: deploy
+  image: alpine:3.18
+  before_script:
+    - # Установка зависимостей: YC CLI, kubectl, helm
+      apk add --no-cache curl bash openssl
+    - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    - chmod +x kubectl
+    - mv kubectl /usr/local/bin/
+    - curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i /usr/local/yandex-cloud -n
+    - ln -s /usr/local/yandex-cloud/bin/yc /usr/local/bin/yc
+    - curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    - # Авторизация
+      if [ -f "$YC_SA_KEY" ]; then cat "$YC_SA_KEY" > sa-key.json; else echo "$YC_SA_KEY" > sa-key.json; fi
+    - yc config set service-account-key sa-key.json
+    - yc config set cloud-id $YC_CLOUD_ID
+    - yc config set folder-id $YC_FOLDER_ID
+    - # Настройка kubectl
+      yc managed-kubernetes cluster get-credentials --id $K8S_CLUSTER_ID --external --force
+  script:
+    - TAG=$CI_COMMIT_SHORT_SHA
+    - RELEASE_NAME="frontend"
+    - DOMAIN_CLEAN=$(echo $DOMAIN_NAME | sed 's/\.$//')
+    
+    - # Deploying Application
+      helm upgrade --install $RELEASE_NAME helm/frontend-chart 
+      --set fullnameOverride=$RELEASE_NAME 
+      --set image.repository="$APP_IMAGE" 
+      --set image.tag="$TAG" 
+      --set externalIp="$EXTERNAL_IP" 
+      --set domainName="$DOMAIN_CLEAN" 
+      --set ingress.className="nginx" 
+      --set backendUrl="http://fastapi:80"
+      --timeout 5m 
+      --wait
+  only:
+    - main
