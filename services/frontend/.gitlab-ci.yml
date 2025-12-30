@@ -28,7 +28,9 @@ frontend-build:
   script:
     - cd services/frontend
     - TAG=$CI_COMMIT_SHORT_SHA
-    - docker build -t $APP_IMAGE:$TAG -t $APP_IMAGE:latest .
+    - DOMAIN_CLEAN=$(echo $DOMAIN_NAME | sed 's/\.$//')
+    - BACKEND_URL="https://$DOMAIN_CLEAN/api"
+    - docker build -t $APP_IMAGE:$TAG -t $APP_IMAGE:latest --build-arg NEXT_PUBLIC_API_URL="$BACKEND_URL" .
     - docker push $APP_IMAGE:$TAG
     - docker push $APP_IMAGE:latest
 
@@ -64,7 +66,7 @@ deploy-frontend:
       --set externalIp="$EXTERNAL_IP" 
       --set domainName="$DOMAIN_CLEAN" 
       --set ingress.className="nginx" 
-      --set backendUrl="http://fastapi:80"
+      --set backendUrl="https://$DOMAIN_CLEAN/api"
       --timeout 5m 
       --wait
   only:

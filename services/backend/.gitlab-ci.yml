@@ -88,10 +88,20 @@ deploy-to-k8s:
     - # Updating Secrets from Lockbox
       PAYLOAD=$(yc lockbox payload get $LOCKBOX_ID --format json)
     - SECRET_KEY=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "secret_key") | .text_value')
-    - DATABASE_URL=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "database_url") | .text_value')
+    - DB_HOST=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "db_host") | .text_value')
+    - DB_PORT=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "db_port") | .text_value')
+    - DB_USER=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "db_user") | .text_value')
+    - DB_PASSWORD=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "db_password") | .text_value')
+    - DB_NAME=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "db_name") | .text_value')
+    - DB_SSL_MODE=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "db_ssl_mode") | .text_value')
     - kubectl create secret generic "$RELEASE_NAME-app-secrets" 
       --from-literal=secret-key="$SECRET_KEY" 
-      --from-literal=database-url="$DATABASE_URL" 
+      --from-literal=db-host="$DB_HOST" 
+      --from-literal=db-port="$DB_PORT" 
+      --from-literal=db-user="$DB_USER" 
+      --from-literal=db-password="$DB_PASSWORD" 
+      --from-literal=db-name="$DB_NAME" 
+      --from-literal=db-ssl-mode="$DB_SSL_MODE" 
       --dry-run=client -o yaml | kubectl apply -f -
 
     - # Running Database Migrations

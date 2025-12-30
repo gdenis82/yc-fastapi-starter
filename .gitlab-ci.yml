@@ -9,7 +9,7 @@ workflow:
 
 variables:
   # Эти переменные должны быть настроены в GitLab CI/CD Variables
-  # YC_SA_KEY: JSON ключ сервисного аккаунта
+  # YC_SA_KEY: JSON ключ сервисного аккаунта (Тип: File)
   # YC_CLOUD_ID: ID облака
   # YC_FOLDER_ID: ID каталога
   # REGISTRY_ID: ID реестра
