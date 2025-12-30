@@ -24,20 +24,13 @@ import { useAuthStore, User } from '@/store/auth-store';
 import { useRouter } from 'next/navigation';
 
 export default function AdminPage() {
-  const { user, isLoading: isAuthLoading } = useAuthStore();
-  const router = useRouter();
+  const { user } = useAuthStore();
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [role, setRole] = useState('all');
   const [sort, setSort] = useState('name:asc');
-
-  useEffect(() => {
-    if (!isAuthLoading && (!user || user.role_obj?.name !== 'admin')) {
-      router.push('/');
-    }
-  }, [user, isAuthLoading, router]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -64,8 +57,8 @@ export default function AdminPage() {
     enabled: !!user && user.role_obj?.name === 'admin',
   });
 
-  if (isAuthLoading || !user || user.role_obj?.name !== 'admin') {
-    return <div className="container py-20 text-center">Checking permissions...</div>;
+  if (!user || user.role_obj?.name !== 'admin') {
+    return null;
   }
 
   const toggleSort = (field: string) => {
