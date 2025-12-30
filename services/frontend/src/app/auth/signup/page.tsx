@@ -33,8 +33,10 @@ export default function SignUpPage() {
     resolver: zodResolver(registerSchema),
   });
 
-  const onSubmit = async (data: RegisterForm) => {
+  const onSubmit = async (values: RegisterForm) => {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { confirmPassword, ...data } = values;
       await apiClient.post('/auth/register', data);
       toast.success('Registered successfully! You can now sign in.');
       router.push('/auth/signin');
@@ -95,6 +97,18 @@ export default function SignUpPage() {
               />
               {errors.password && (
                 <p className="text-sm text-destructive">{errors.password.message}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <Input 
+                id="confirmPassword" 
+                type="password" 
+                autoComplete="new-password"
+                {...register('confirmPassword')} 
+              />
+              {errors.confirmPassword && (
+                <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
               )}
             </div>
           </CardContent>
