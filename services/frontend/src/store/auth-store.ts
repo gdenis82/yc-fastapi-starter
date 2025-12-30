@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create, StateCreator } from 'zustand';
 import Cookies from 'js-cookie';
 
 export interface User {
@@ -15,23 +15,25 @@ export interface User {
   };
 }
 
-interface AuthState {
+export interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   setAuth: (user: User | null) => void;
-  setLoading: (isLoading: boolean) => void;
+  setLoading: (loading: boolean) => void;
   logout: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+const authStoreCreator: StateCreator<AuthState> = (set) => ({
   user: null,
   isAuthenticated: false,
   isLoading: true,
   setAuth: (user) => set({ user, isAuthenticated: !!user, isLoading: false }),
-  setLoading: (isLoading) => set({ isLoading }),
+  setLoading: (loading) => set({ isLoading: loading }),
   logout: () => {
     Cookies.remove('token');
     set({ user: null, isAuthenticated: false, isLoading: false });
   },
-}));
+});
+
+export const useAuthStore = create<AuthState>(authStoreCreator);
