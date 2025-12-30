@@ -22,7 +22,6 @@ import Providers from "@/components/providers";
 import { Toaster } from "@/components/ui/sonner";
 
 import { Header } from "@/components/header";
-import { AuthCheck } from "@/components/auth-check";
 
 export default function RootLayout({
   children,
@@ -41,12 +40,10 @@ export default function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            <AuthCheck>
-              <div className="relative flex min-h-screen flex-col">
-                <Header />
-                <main className="flex-1">{children}</main>
-              </div>
-            </AuthCheck>
+            <div className="relative flex min-h-screen flex-col">
+              <Header />
+              <main className="flex-1">{children}</main>
+            </div>
             <Toaster />
           </ThemeProvider>
         </Providers>
