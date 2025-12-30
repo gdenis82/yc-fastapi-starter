@@ -452,6 +452,30 @@ resource "yandex_lockbox_secret_version" "app-secrets-v1" {
     key        = "database_url"
     text_value = "postgresql://dbuser:${random_password.db_password.result}@${yandex_mdb_postgresql_cluster.postgres.host[0].fqdn}:6432/fastapi_db?sslmode=verify-full&sslrootcert=/root/.postgresql/root.crt"
   }
+  entries {
+    key        = "db_host"
+    text_value = yandex_mdb_postgresql_cluster.postgres.host[0].fqdn
+  }
+  entries {
+    key        = "db_port"
+    text_value = "6432"
+  }
+  entries {
+    key        = "db_user"
+    text_value = yandex_mdb_postgresql_user.dbuser.name
+  }
+  entries {
+    key        = "db_password"
+    text_value = random_password.db_password.result
+  }
+  entries {
+    key        = "db_name"
+    text_value = yandex_mdb_postgresql_database.fastapi_db.name
+  }
+  entries {
+    key        = "db_ssl_mode"
+    text_value = "verify-full"
+  }
 }
 
 # --- Additional Input Variables and Outputs ---
