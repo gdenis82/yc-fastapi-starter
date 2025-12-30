@@ -5,12 +5,12 @@ from app.schemas.user import UserCreate, UserUpdate
 
 def test_user_create_password_length():
     # Valid password (long)
-    user_in = UserCreate(email="test@example.com", password="a" * 100)
+    user_in = UserCreate(email="test@example.com", username="testuser", password="a" * 100)
     assert user_in.password == "a" * 100
     
     # Too short password
     with pytest.raises(ValidationError) as excinfo:
-        UserCreate(email="test@example.com", password="a" * 7)
+        UserCreate(email="test@example.com", username="testuser", password="a" * 7)
     assert "String should have at least 8 characters" in str(excinfo.value)
 
 def test_user_update_password_length():
