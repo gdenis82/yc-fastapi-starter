@@ -71,7 +71,7 @@ export default function AdminPage() {
   };
 
   const displayName = (u: User) => {
-    return u.name || u.username || 'N/A';
+    return u.username || 'N/A';
   };
 
   return (
@@ -117,10 +117,10 @@ export default function AdminPage() {
           <TableHeader>
             <TableRow>
               <TableHead onClick={() => toggleSort('username')} className="cursor-pointer">
-                Username {sort.startsWith('username') && (sort.endsWith('asc') ? '↑' : '↓')}
+                Username {sort.startsWith('username') && (sort.endsWith('asc') ? ' \u2191' : ' \u2193')}
               </TableHead>
               <TableHead onClick={() => toggleSort('email')} className="cursor-pointer">
-                Email {sort.startsWith('email') && (sort.endsWith('asc') ? '↑' : '↓')}
+                Email {sort.startsWith('email') && (sort.endsWith('asc') ? ' \u2191' : ' \u2193')}
               </TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Actions</TableHead>

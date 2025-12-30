@@ -34,9 +34,6 @@ async def read_users(
             User.username.ilike(search_filter),
             User.email.ilike(search_filter),
         ]
-        if hasattr(User, 'name'):
-            filters.append(User.name.ilike(search_filter))
-            
         query = query.where(or_(*filters))
     
     if role:
@@ -45,9 +42,7 @@ async def read_users(
     # Sorting
     if sort:
         field, order = sort.split(":")
-        # Map 'name' to 'username' since 'name' field doesn't exist in User model
-        db_field = field if field != "name" else "username"
-        attr = getattr(User, db_field, User.username)
+        attr = getattr(User, field, User.username)
         if order == "desc":
             query = query.order_by(attr.desc())
         else:
