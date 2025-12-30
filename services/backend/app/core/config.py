@@ -4,7 +4,21 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "FastAPI Kubernetes Project"
     
     SECRET_KEY: str = "secret-key"
-    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/postgres"
+    
+    # Database settings
+    DB_HOST: str = "localhost"
+    DB_PORT: int = 5432
+    DB_USER: str = "postgres"
+    DB_PASSWORD: str = "postgres"
+    DB_NAME: str = "postgres"
+    DB_SSL_MODE: str = "prefer"
+    DB_SSL_ROOT_CERT: str | None = "/root/.postgresql/root.crt"
+
+    @property
+    def DATABASE_URL(self) -> str:
+        # Note: We return a string that can be parsed by make_url or used in create_async_engine
+        # But we will use the components directly in session.py to avoid parsing issues.
+        return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
     
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
