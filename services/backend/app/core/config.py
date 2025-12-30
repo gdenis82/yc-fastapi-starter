@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     PROJECT_NAME: str = "FastAPI Kubernetes Project"
     
-    SECRET_KEY: str = "temporary-secret-key-change-me"
+    SECRET_KEY: str = "secret-key"
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/postgres"
     
     ALGORITHM: str = "HS256"
