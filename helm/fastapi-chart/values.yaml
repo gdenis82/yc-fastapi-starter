@@ -23,6 +23,12 @@ ingress:
       paths:
         - path: /api
           pathType: Prefix
+          serviceName: "" # Default to backend
+          servicePort: 80
+        - path: /
+          pathType: Prefix
+          serviceName: "frontend"
+          servicePort: 3000
   tls:
     - secretName: "tryout-site-tls"
       hosts:
@@ -40,3 +46,5 @@ migration:
 
 logging:
   level: "INFO"
+
+corsOrigins: "[\"https://tryout.site\",\"http://tryout.site\",\"http://localhost:3000\"]"

@@ -13,7 +13,7 @@ service:
   port: 3000
 
 ingress:
-  enabled: true
+  enabled: false
   className: "nginx"
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
@@ -31,4 +31,4 @@ ingress:
 externalIp: ""
 domainName: "tryout.site"
 
-backendUrl: "http://fastapi:80"
+backendUrl: "https://tryout.site/api"
