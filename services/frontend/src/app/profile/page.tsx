@@ -26,34 +26,40 @@ export default function ProfilePage() {
   } = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
-      name: user?.name || '',
+      username: user?.username || '',
       email: user?.email || '',
+      password: '',
     },
   });
-
+  
   useEffect(() => {
     if (user) {
       reset({
-        name: user.name || '',
+        username: user.username || '',
         email: user.email || '',
+        password: '',
       });
     }
   }, [user, reset]);
-
+  
   const onSubmit = async (data: ProfileForm) => {
     try {
-      const response = await apiClient.patch('/users/me', data);
+      const filteredData = Object.fromEntries(
+        Object.entries(data).filter(([_, v]) => v !== '')
+      );
+      const response = await apiClient.patch('/auth/me', filteredData);
       setAuth(response.data);
       toast.success('Profile updated successfully');
+      reset({ ...response.data, password: '' });
     } catch (error: any) {
-      toast.error('Failed to update profile');
+      toast.error(error.response?.data?.detail || 'Failed to update profile');
     }
   };
-
+  
   if (!user) {
     return <div className="container py-20 text-center text-muted-foreground">Loading...</div>;
   }
-
+  
   return (
     <div className="container py-20">
       <div className="max-w-md mx-auto">
@@ -64,17 +70,24 @@ export default function ProfilePage() {
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Name</Label>
-                <Input id="name" {...register('name')} />
-                {errors.name && (
-                  <p className="text-sm text-destructive">{errors.name.message}</p>
+                <Label htmlFor="username">Username</Label>
+                <Input id="username" {...register('username')} />
+                {errors.username && (
+                  <p className="text-sm text-destructive">{errors.username.message}</p>
                 )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" {...register('email')} disabled />
+                <Input id="email" type="email" {...register('email')} />
                 {errors.email && (
                   <p className="text-sm text-destructive">{errors.email.message}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">New Password (leave blank to keep current)</Label>
+                <Input id="password" type="password" {...register('password')} />
+                {errors.password && (
+                  <p className="text-sm text-destructive">{errors.password.message}</p>
                 )}
               </div>
               <Button type="submit" className="w-full" disabled={isSubmitting}>
