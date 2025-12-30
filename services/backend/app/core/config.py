@@ -9,7 +9,11 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
-    CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:3000",
+        "https://tryout.site",
+        "http://tryout.site",
+    ]
     
     model_config = SettingsConfigDict(case_sensitive=True, env_file=".env")
 
