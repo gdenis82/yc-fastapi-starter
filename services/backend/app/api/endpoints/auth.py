@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.user import User
 from app.models.role import Role
-from app.schemas.user import User as UserSchema, UserCreate
+from app.schemas.user import User as UserSchema, UserCreate, UserUpdate
 from app.schemas.token import Token
 
 router = APIRouter()
@@ -19,6 +19,41 @@ router = APIRouter()
 async def get_role_by_name(db: AsyncSession, name: str) -> Role:
     result = await db.execute(select(Role).where(Role.name == name))
     return result.scalar_one_or_none()
+
+@router.patch("/me", response_model=UserSchema)
+async def update_user_me(
+    *,
+    db: AsyncSession = Depends(get_db),
+    user_in: UserUpdate,
+    current_user: User = Depends(deps.get_current_active_user),
+) -> Any:
+    if user_in.email is not None and user_in.email != current_user.email:
+        result = await db.execute(select(User).where(User.email == user_in.email))
+        user = result.scalar_one_or_none()
+        if user:
+            raise HTTPException(
+                status_code=400,
+                detail="The user with this email already exists in the system.",
+            )
+        current_user.email = user_in.email
+    
+    if user_in.username is not None:
+        current_user.username = user_in.username
+    
+    if user_in.password is not None:
+        current_user.hashed_password = security.get_password_hash(user_in.password)
+    
+    db.add(current_user)
+    await db.commit()
+    await db.refresh(current_user)
+    
+    # Reload with role_obj
+    result = await db.execute(
+        select(User)
+        .where(User.id == current_user.id)
+        .options(selectinload(User.role_obj))
+    )
+    return result.scalar_one()
 
 @router.post("/register", response_model=UserSchema)
 async def register(
