@@ -1,7 +1,12 @@
+'use client';
+
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { useAuthStore } from '@/store/auth-store';
 
 export default function Home() {
+  const { isAuthenticated } = useAuthStore();
+
   return (
     <div className="flex flex-col gap-20 pb-20">
       <section className="container pt-20 text-center px-4 md:px-6">
@@ -13,9 +18,11 @@ export default function Home() {
           Built with App Router, Tailwind CSS, shadcn/ui, and TanStack Query.
         </p>
         <div className="mt-10 flex items-center justify-center gap-4">
-          <Button size="lg" asChild>
-            <Link href="/auth/signup">Get Started</Link>
-          </Button>
+          {!isAuthenticated && (
+            <Button size="lg" asChild>
+              <Link href="/auth/signup">Get Started</Link>
+            </Button>
+          )}
           <Button size="lg" variant="outline" asChild>
             <Link href="/about">Learn More</Link>
           </Button>
