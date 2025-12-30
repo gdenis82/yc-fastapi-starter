@@ -25,7 +25,7 @@ async def read_users(
     """
     Retrieve users for admin dashboard.
     """
-    query = select(User).options(selectinload(User.role_obj))
+    query = select(User)
     
     # Filtering
     if search:
@@ -39,21 +39,28 @@ async def read_users(
     if role:
         query = query.join(User.role_obj).where(Role.name == role)
     
-    # Sorting
-    if sort:
-        field, order = sort.split(":")
-        attr = getattr(User, field, User.username)
-        if order == "desc":
-            query = query.order_by(attr.desc())
-        else:
-            query = query.order_by(attr.asc())
+    # Count total users after filtering but before pagination and options
+    total_query = select(func.count(User.id)).select_from(query.subquery())
+    total_result = await db.execute(total_query)
+    total = total_result.scalar() or 0
+    
+    # Add relations and sorting
+    query = query.options(selectinload(User.role_obj))
+    
+    if sort and ":" in sort:
+        try:
+            field, order = sort.split(":")
+            attr = getattr(User, field, User.username)
+            if order == "desc":
+                query = query.order_by(attr.desc())
+            else:
+                query = query.order_by(attr.asc())
+        except Exception:
+            query = query.order_by(User.username.asc())
+    else:
+        query = query.order_by(User.username.asc())
     
     # Pagination
-    # Count total users before pagination but after filtering
-    total_query = select(func.count(User.id)).select_from(query.order_by(None).subquery())
-    total_result = await db.execute(total_query)
-    total = total_result.scalar()
-    
     query = query.offset((page - 1) * limit).limit(limit)
     result = await db.execute(query)
     users = result.scalars().all()
