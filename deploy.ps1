@@ -88,8 +88,9 @@ if ($LASTEXITCODE -ne 0) { throw "Backend Docker push failed for $BACKEND_LATEST
 $FRONTEND_IMAGE_NAME = "cr.yandex/$REGISTRY_ID/frontend-app:$TAG"
 $FRONTEND_LATEST_NAME = "cr.yandex/$REGISTRY_ID/frontend-app:latest"
 
-Write-Host "Building frontend image $FRONTEND_IMAGE_NAME..."
-docker build -t $FRONTEND_IMAGE_NAME -t $FRONTEND_LATEST_NAME ./services/frontend
+$BACKEND_URL = "https://$DOMAIN_CLEAN/api"
+Write-Host "Building frontend image $FRONTEND_IMAGE_NAME with NEXT_PUBLIC_API_URL=$BACKEND_URL..."
+docker build -t $FRONTEND_IMAGE_NAME -t $FRONTEND_LATEST_NAME --build-arg NEXT_PUBLIC_API_URL="$BACKEND_URL" ./services/frontend
 if ($LASTEXITCODE -ne 0) { throw "Frontend Docker build failed" }
 
 Write-Host "Pushing frontend images to Registry..."
@@ -128,13 +129,47 @@ kubectl apply -f helm\cluster-issuer.yaml
 
 $RELEASE_NAME = "fastapi"
 
-# Determine Secret key and Database URL from Lockbox
+# Determine Secret key and Database components from Lockbox
 $payload = yc lockbox payload get $LOCKBOX_ID --format json | ConvertFrom-Json
 $SECRET_KEY_FROM_LOCKBOX = ($payload.entries | Where-Object { $_.key -eq "secret_key" }).text_value
-$DATABASE_URL_FROM_LOCKBOX = ($payload.entries | Where-Object { $_.key -eq "database_url" }).text_value
+
+# Function to get entry from lockbox payload
+function Get-LockboxEntry($key) {
+    return ($payload.entries | Where-Object { $_.key -eq $key }).text_value
+}
+
+$DB_HOST = Get-LockboxEntry "db_host"
+$DB_PORT = Get-LockboxEntry "db_port"
+$DB_USER = Get-LockboxEntry "db_user"
+$DB_PASSWORD = Get-LockboxEntry "db_password"
+$DB_NAME = Get-LockboxEntry "db_name"
+$DB_SSL_MODE = Get-LockboxEntry "db_ssl_mode"
 
 if (-not $SECRET_KEY_FROM_LOCKBOX) { throw "Failed to fetch SECRET_KEY from Lockbox" }
-if (-not $DATABASE_URL_FROM_LOCKBOX) { throw "Failed to fetch DATABASE_URL from Lockbox" }
+
+if (-not $DB_HOST -or -not $DB_USER -or -not $DB_PASSWORD -or -not $DB_NAME) {
+    Write-Host "`n[WARNING] Some individual database variables (db_host, db_user, etc.) are missing in Lockbox!" -ForegroundColor Yellow
+    Write-Host "New configuration requires these separate variables to handle special characters in passwords." -ForegroundColor Yellow
+    Write-Host "Would you like to run 'terraform apply' to update Lockbox with separate variables? (y/n)" -ForegroundColor Cyan
+    $choice = Read-Host
+    if ($choice -eq 'y') {
+        Push-Location terraform
+        terraform apply -auto-approve
+        Pop-Location
+        # Refresh payload
+        $payload = yc lockbox payload get $LOCKBOX_ID --format json | ConvertFrom-Json
+        $DB_HOST = Get-LockboxEntry "db_host"
+        $DB_PORT = Get-LockboxEntry "db_port"
+        $DB_USER = Get-LockboxEntry "db_user"
+        $DB_PASSWORD = Get-LockboxEntry "db_password"
+        $DB_NAME = Get-LockboxEntry "db_name"
+        $DB_SSL_MODE = Get-LockboxEntry "db_ssl_mode"
+    }
+    
+    if (-not $DB_HOST -or -not $DB_USER -or -not $DB_PASSWORD -or -not $DB_NAME) {
+        throw "Missing database configuration in Lockbox. Please ensure db_host, db_port, db_user, db_password, db_name are present. Run 'terraform apply' to populate them."
+    }
+}
 
 # Create/Update secrets via kubectl to avoid passing them as helm arguments
 # We use --dry-run=client -o yaml | kubectl apply to be idempotent and silent about values
@@ -143,7 +178,12 @@ $RELEASE_NAME = "fastapi"
 Write-Host "Creating/Updating application secrets..."
 kubectl create secret generic "$RELEASE_NAME-app-secrets" `
     --from-literal=secret-key="$SECRET_KEY_FROM_LOCKBOX" `
-    --from-literal=database-url="$DATABASE_URL_FROM_LOCKBOX" `
+    --from-literal=db-host="$DB_HOST" `
+    --from-literal=db-port="$DB_PORT" `
+    --from-literal=db-user="$DB_USER" `
+    --from-literal=db-password="$DB_PASSWORD" `
+    --from-literal=db-name="$DB_NAME" `
+    --from-literal=db-ssl-mode="$DB_SSL_MODE" `
     --dry-run=client -o yaml | kubectl apply -f -
 
 Write-Host "--- Running Database Migrations ---" -ForegroundColor Cyan
