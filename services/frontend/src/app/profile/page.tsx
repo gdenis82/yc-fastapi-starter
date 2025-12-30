@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuthStore } from '@/store/auth-store';
 import { useEffect } from 'react';
 import apiClient from '@/lib/axios';
+import axios from 'axios';
 import { toast } from 'sonner';
 
 type ProfileForm = z.infer<typeof profileSchema>;
@@ -51,8 +52,12 @@ export default function ProfilePage() {
       setAuth(response.data);
       toast.success('Profile updated successfully');
       reset({ ...response.data, password: '' });
-    } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to update profile');
+    } catch (error) {
+      let errorMessage = 'Failed to update profile';
+      if (axios.isAxiosError(error)) {
+        errorMessage = error.response?.data?.detail || errorMessage;
+      }
+      toast.error(errorMessage);
     }
   };
   

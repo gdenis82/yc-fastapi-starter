@@ -47,7 +47,7 @@ function ResetPasswordContent() {
       });
       toast.success('Password reset successfully');
       router.push('/auth/signin');
-    } catch (error: any) {
+    } catch (error) {
       toast.error('Failed to reset password');
     }
   };

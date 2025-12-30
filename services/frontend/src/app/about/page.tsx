@@ -19,7 +19,7 @@ export default function AboutPage() {
             <li><strong>FastAPI:</strong> High-performance Python web framework.</li>
             <li><strong>Next.js:</strong> The React framework for the web.</li>
             <li><strong>Tailwind CSS:</strong> A utility-first CSS framework.</li>
-            <li><strong>PostgreSQL:</strong> The world's most advanced open source database.</li>
+            <li><strong>PostgreSQL:</strong> The world&#39;s most advanced open source database.</li>
           </ul>
         </div>
       </div>

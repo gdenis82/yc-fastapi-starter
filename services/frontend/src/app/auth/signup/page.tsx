@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import Link from 'next/link';
 import apiClient from '@/lib/axios';
+import axios from 'axios';
 import { toast } from 'sonner';
 
 type RegisterForm = z.infer<typeof registerSchema>;
@@ -40,14 +41,20 @@ export default function SignUpPage() {
       await apiClient.post('/auth/register', data);
       toast.success('Registered successfully! You can now sign in.');
       router.push('/auth/signin');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Registration error:', error);
-      const detail = error.response?.data?.detail;
-      if (Array.isArray(detail)) {
-        toast.error(detail[0]?.msg || 'Validation error');
-      } else {
-        toast.error(detail || 'Failed to register');
+      let errorMessage = 'Failed to register';
+      
+      if (axios.isAxiosError(error)) {
+        const detail = error.response?.data?.detail;
+        if (Array.isArray(detail)) {
+          errorMessage = detail[0]?.msg || 'Validation error';
+        } else if (typeof detail === 'string') {
+          errorMessage = detail;
+        }
       }
+      
+      toast.error(errorMessage);
     }
   };
 

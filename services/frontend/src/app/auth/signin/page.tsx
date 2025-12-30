@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import Link from 'next/link';
 import apiClient from '@/lib/axios';
+import axios from 'axios';
 import { toast } from 'sonner';
 import Cookies from 'js-cookie';
 import { useAuthStore } from '@/store/auth-store';
@@ -56,14 +57,20 @@ export default function SignInPage() {
       
       toast.success('Logged in successfully');
       router.push('/');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Login error:', error);
-      const detail = error.response?.data?.detail;
-      if (Array.isArray(detail)) {
-        toast.error(detail[0]?.msg || 'Validation error');
-      } else {
-        toast.error(detail || 'Failed to sign in');
+      let errorMessage = 'Failed to sign in';
+      
+      if (axios.isAxiosError(error)) {
+        const detail = error.response?.data?.detail;
+        if (Array.isArray(detail)) {
+          errorMessage = detail[0]?.msg || 'Validation error';
+        } else if (typeof detail === 'string') {
+          errorMessage = detail;
+        }
       }
+      
+      toast.error(errorMessage);
     }
   };
 

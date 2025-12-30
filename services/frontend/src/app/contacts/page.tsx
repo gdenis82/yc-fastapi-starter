@@ -28,7 +28,7 @@ export default function ContactsPage() {
       await apiClient.post('/contacts', data);
       toast.success('Message sent successfully!');
       reset();
-    } catch (error: any) {
+    } catch (error) {
       toast.error('Failed to send message');
     }
   };

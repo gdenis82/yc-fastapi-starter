@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { useAuthStore } from '@/store/auth-store';
+import { useAuthStore, User } from '@/store/auth-store';
 import { useRouter } from 'next/navigation';
 
 export default function AdminPage() {
@@ -47,7 +47,7 @@ export default function AdminPage() {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useQuery<{ users: User[], total: number }>({
     queryKey: ['admin-users', page, limit, debouncedSearch, role, sort],
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -139,7 +139,7 @@ export default function AdminPage() {
                 <TableCell colSpan={4} className="text-center">No users found</TableCell>
               </TableRow>
             ) : (
-              data?.users.map((u: any) => (
+              data?.users.map((u) => (
                 <TableRow key={u.id}>
                   <TableCell>{u.name || 'N/A'}</TableCell>
                   <TableCell>{u.email}</TableCell>
