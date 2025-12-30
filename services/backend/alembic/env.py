@@ -34,84 +34,29 @@ import ssl
 import os
 import urllib.parse
 from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.engine import make_url
-
-def fix_database_url(url: str) -> str:
-    """
-    Correctly escapes special characters in the database URL password.
-    Handles cases where password contains '@' or '?'.
-    """
-    if not url or "://" not in url:
-        return url
-    
-    scheme, rest = url.split("://", 1)
-    
-    # Identify the credentials and host part.
-    # It ends at the first '/', '?' or '#' that is NOT part of the credentials.
-    # However, if the password contains '?' or '@', it can be ambiguous.
-    # The most reliable separator between host and path is the first '/'.
-    first_slash = rest.find("/")
-    if first_slash != -1:
-        cred_and_host = rest[:first_slash]
-        path_and_query = rest[first_slash:]
-    else:
-        # If no '/', the host part might end with '?' (query string)
-        # We find the LAST '@' to separate credentials from host.
-        last_at = rest.rfind("@")
-        if last_at == -1:
-            return url
-            
-        # Everything after the last '@' until the first '?' is the host.
-        remaining = rest[last_at+1:]
-        host_end = len(remaining)
-        for sep in "?#":
-            idx = remaining.find(sep)
-            if idx != -1 and idx < host_end:
-                host_end = idx
-        
-        cred_and_host = rest[:last_at + 1 + host_end]
-        path_and_query = rest[last_at + 1 + host_end:]
-
-    if "@" not in cred_and_host:
-        return url
-        
-    # The last '@' in cred_and_host separates credentials from host
-    creds, host = cred_and_host.rsplit("@", 1)
-    
-    if ":" not in creds:
-        user = creds
-        password = ""
-    else:
-        user, password = creds.split(":", 1)
-    
-    # Re-quote user and password
-    quoted_user = urllib.parse.quote(urllib.parse.unquote(user), safe="")
-    quoted_password = urllib.parse.quote(urllib.parse.unquote(password), safe="")
-    
-    return f"{scheme}://{quoted_user}:{quoted_password}@{host}{path_and_query}"
+from sqlalchemy.engine import URL
 
 def get_engine_settings():
-    fixed_url = fix_database_url(settings.DATABASE_URL)
-    url = make_url(fixed_url)
-    
-    # Ensure we use asyncpg driver
-    if url.drivername == "postgresql":
-        url = url.set(drivername="postgresql+asyncpg")
+    # Construct URL object directly to avoid parsing/escaping issues
+    url = URL.create(
+        drivername="postgresql+asyncpg",
+        username=settings.DB_USER,
+        password=settings.DB_PASSWORD,
+        host=settings.DB_HOST,
+        port=settings.DB_PORT,
+        database=settings.DB_NAME,
+    )
     
     connect_args = {}
-    query = dict(url.query)
+    ssl_mode = settings.DB_SSL_MODE
+    ssl_root_cert = settings.DB_SSL_ROOT_CERT
     
-    ssl_mode = query.pop("sslmode", None)
-    ssl_root_cert = query.pop("sslrootcert", None)
-    
-    if ssl_mode:
-        print(f"DEBUG: Configuring SSL context for mode: {ssl_mode}")
+    if ssl_mode and ssl_mode != "disable":
         if ssl_mode in ['verify-ca', 'verify-full']:
             if ssl_root_cert:
                 if os.path.exists(ssl_root_cert):
                     ssl_context = ssl.create_default_context(cafile=ssl_root_cert)
                 else:
-                    print(f"DEBUG: Warning: sslrootcert file not found at {ssl_root_cert}")
                     ssl_context = ssl.create_default_context()
             else:
                 ssl_context = ssl.create_default_context()
@@ -120,15 +65,12 @@ def get_engine_settings():
                 ssl_context.check_hostname = False
             
             connect_args["ssl"] = ssl_context
-        elif ssl_mode == 'require':
+        elif ssl_mode in ['require', 'prefer']:
             ssl_context = ssl.create_default_context()
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
             connect_args["ssl"] = ssl_context
             
-        # Update URL to remove ssl parameters that asyncpg doesn't support
-        url = url.set(query=query)
-        
     return url, connect_args
 
 def run_migrations_offline() -> None:
