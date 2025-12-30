@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     DB_USER: str = "postgres"
     DB_PASSWORD: str = "postgres"
     DB_NAME: str = "postgres"
-    DB_SSL_MODE: str = "prefer"
+    DB_SSL_MODE: str = "disable"
     DB_SSL_ROOT_CERT: str | None = "/root/.postgresql/root.crt"
 
     @property

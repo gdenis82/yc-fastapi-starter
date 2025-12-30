@@ -68,6 +68,6 @@ async def get_current_active_admin(
 ) -> User:
     if not current_user.role_obj or current_user.role_obj.name != "admin":
         raise HTTPException(
-            status_code=400, detail="The user doesn't have enough privileges"
+            status_code=status.HTTP_403_FORBIDDEN, detail="The user doesn't have enough privileges"
         )
     return current_user
