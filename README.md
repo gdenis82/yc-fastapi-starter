@@ -14,24 +14,25 @@
 ```text
 .
 ├── services/
-│   └── backend/            # Микросервис Backend (FastAPI)
-│       ├── app/
-│       │   ├── api/        # Эндпоинты
-│       │   ├── core/       # Конфигурация, логирование
-│       │   ├── models/     # Модели базы данных
-│       │   ├── schemas/    # Pydantic схемы
-│       │   ├── db/         # Подключение к БД
-│       │   └── main.py     # Точка входа
-│       ├── alembic/        # Миграции (внутри сервиса)
-│       ├── Dockerfile      # Сборка сервиса
-│       ├── entrypoint.sh   # Скрипт запуска
-│       └── .gitlab-ci.yml  # CI/CD пайплайн сервиса
-├── helm/                   # Helm-чарт для Kubernetes
+│   ├── backend/            # Микросервис Backend (FastAPI)
+│   │   ├── app/
+│   │   │   ├── api/        # Эндпоинты (теперь с префиксом /api)
+│   │   │   ├── core/       # Конфигурация (Pydantic Settings), логирование
+│   │   │   ├── models/     # Модели базы данных (SQLAlchemy)
+│   │   │   ├── schemas/    # Pydantic схемы
+│   │   │   ├── db/         # Подключение к БД (использует отдельные параметры)
+│   │   │   └── main.py     # Точка входа
+│   │   ├── alembic/        # Миграции (Alembic)
+│   │   ├── Dockerfile      # Сборка с поддержкой SSL-сертификатов YC
+│   │   └── entrypoint.sh   # Скрипт запуска
+│   └── frontend/           # Frontend (Next.js)
+│       ├── src/            # Исходный код
+│       └── Dockerfile      # Сборка с вшиванием NEXT_PUBLIC_API_URL
+├── helm/                   # Helm-чарты для Kubernetes (Backend & Frontend)
 ├── terraform/              # Инфраструктура как код (Yandex Cloud)
-├── docker-compose.yml      # Локальная разработка
-├── Makefile                # Удобные команды (make up, make migrate)
-├── .gitlab-ci.yml          # Корневой CI/CD (триггеры Child Pipelines)
-├── deploy.ps1              # Скрипт автоматизированного деплоя
+├── deploy.ps1              # Основной скрипт автоматизированного деплоя
+├── prepare-infra.ps1       # Скрипт подготовки инфраструктуры
+├── cleanup.ps1             # Скрипт удаления ресурсов
 └── DEPLOY.md               # Инструкция по развертыванию
 ```
 
