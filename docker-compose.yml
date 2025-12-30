@@ -19,13 +19,19 @@ services:
   frontend:
     build:
       context: ./services/frontend
+      dockerfile: Dockerfile.dev
     ports:
       - "3000:3000"
     restart: unless-stopped
+    volumes:
+      - ./services/frontend:/app
+      - /app/node_modules
+      - /app/.next
     networks:
       - common-network
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - WATCHPACK_POLLING=true
     depends_on:
       - backend
 
@@ -37,7 +43,7 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=postgres
     ports:
-      - "5433:5432"
+      - "5432:5432"
     networks:
       - common-network
     healthcheck:
