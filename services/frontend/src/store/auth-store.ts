@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import Cookies from 'js-cookie';
 
-interface User {
+export interface User {
   id: string;
   email: string;
   username: string;
+  name?: string;
   role: string;
   role_id?: number;
   role_obj?: {
