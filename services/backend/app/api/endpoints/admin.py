@@ -44,7 +44,9 @@ async def read_users(
     # Sorting
     if sort:
         field, order = sort.split(":")
-        attr = getattr(User, field, User.username)
+        # Map 'name' to 'username' since 'name' field doesn't exist in User model
+        db_field = field if field != "name" else "username"
+        attr = getattr(User, db_field, User.username)
         if order == "desc":
             query = query.order_by(attr.desc())
         else:

@@ -30,7 +30,7 @@ export default function AdminPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [role, setRole] = useState('all');
-  const [sort, setSort] = useState('name:asc');
+  const [sort, setSort] = useState('username:asc');
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -68,6 +68,10 @@ export default function AdminPage() {
     } else {
       setSort(`${field}:asc`);
     }
+  };
+
+  const displayName = (u: User) => {
+    return u.name || u.username || 'N/A';
   };
 
   return (
@@ -112,8 +116,8 @@ export default function AdminPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead onClick={() => toggleSort('name')} className="cursor-pointer">
-                Name {sort.startsWith('name') && (sort.endsWith('asc') ? '↑' : '↓')}
+              <TableHead onClick={() => toggleSort('username')} className="cursor-pointer">
+                Username {sort.startsWith('username') && (sort.endsWith('asc') ? '↑' : '↓')}
               </TableHead>
               <TableHead onClick={() => toggleSort('email')} className="cursor-pointer">
                 Email {sort.startsWith('email') && (sort.endsWith('asc') ? '↑' : '↓')}
@@ -134,7 +138,7 @@ export default function AdminPage() {
             ) : (
               data?.users.map((u) => (
                 <TableRow key={u.id}>
-                  <TableCell>{u.name || 'N/A'}</TableCell>
+                  <TableCell>{displayName(u)}</TableCell>
                   <TableCell>{u.email}</TableCell>
                   <TableCell>{u.role_obj?.name || u.role}</TableCell>
                   <TableCell>
