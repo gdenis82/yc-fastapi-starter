@@ -23,8 +23,8 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
       try {
         const response = await apiClient.get('/auth/me');
         setAuth(response.data);
-      } catch (error) {
-        console.error('Failed to initialize auth:', error);
+      } catch (error: any) {
+        console.error('Failed to initialize auth:', error.response?.status, error.message);
         setLoading(false);
       }
     };
