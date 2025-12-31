@@ -140,7 +140,7 @@ export default function AdminPage() {
                 <TableRow key={u.id}>
                   <TableCell>{displayName(u)}</TableCell>
                   <TableCell>{u.email}</TableCell>
-                  <TableCell>{u.role_obj?.name || u.role}</TableCell>
+                  <TableCell>{u.role_id}</TableCell>
                   <TableCell>
                     <Button variant="ghost" size="sm">Edit</Button>
                   </TableCell>
