@@ -1,7 +1,7 @@
-from sqlalchemy import String, Boolean, ForeignKey
+from sqlalchemy import String, Boolean, ForeignKey, inspect
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING,Dict, Any
 
 if TYPE_CHECKING:
     from app.models.role import Role
@@ -17,3 +17,14 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     role_obj: Mapped["Role"] = relationship("Role", back_populates="users")
+
+    def role_name(self):
+        return self.role_obj.name
+
+    # Serialization method
+    def as_dict(self) -> Dict[str, Any]:
+        """Convert the model instance to a dictionary."""
+        return {
+            c.key: getattr(self, c.key)
+            for c in inspect(self).mapper.column_attrs
+        }
