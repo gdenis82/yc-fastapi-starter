@@ -34,7 +34,7 @@ services:
     networks:
       - common-network
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api
       - WATCHPACK_POLLING=true
     depends_on:
       - backend
