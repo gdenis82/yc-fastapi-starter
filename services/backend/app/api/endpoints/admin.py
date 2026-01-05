@@ -65,4 +65,4 @@ async def read_users(
     result = await db.execute(query)
     users = result.scalars().all()
     
-    return {"users": [u.as_dict() for u in users], "total": total}
+    return {"users": [u.serialization() for u in users], "total": total}
