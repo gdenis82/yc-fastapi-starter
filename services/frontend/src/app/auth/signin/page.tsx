@@ -49,7 +49,9 @@ export default function SignInPage() {
       });
       const { access_token } = response.data;
       
-      Cookies.set('token', access_token, { expires: 7 });
+      // Access token is short-lived, stored in JS-accessible cookie for axios interceptor
+      // Refresh token is handled by the browser via HttpOnly cookie
+      Cookies.set('token', access_token);
       
       // Fetch user info after login
       const meResponse = await apiClient.get('/auth/me');
