@@ -123,6 +123,7 @@ export default function AdminPage() {
                 Email {sort.startsWith('email') && (sort.endsWith('asc') ? ' \u2191' : ' \u2193')}
               </TableHead>
               <TableHead>Role</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -140,7 +141,8 @@ export default function AdminPage() {
                 <TableRow key={u.id}>
                   <TableCell>{displayName(u)}</TableCell>
                   <TableCell>{u.email}</TableCell>
-                  <TableCell>{u.role_id}</TableCell>
+                  <TableCell>{u.role_name}</TableCell>
+                  <TableCell>{u.is_active ? 'Active' : 'Inactive'}</TableCell>
                   <TableCell>
                     <Button variant="ghost" size="sm">Edit</Button>
                   </TableCell>
