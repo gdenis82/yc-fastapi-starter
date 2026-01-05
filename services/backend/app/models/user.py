@@ -22,9 +22,13 @@ class User(Base):
         return self.role_obj.name
 
     # Serialization method
-    def as_dict(self) -> Dict[str, Any]:
-        """Convert the model instance to a dictionary."""
-        return {
-            c.key: getattr(self, c.key)
-            for c in inspect(self).mapper.column_attrs
+    def serialization(self) -> Dict[str, Any]:
+        serialized = {
+            "id": self.id,
+            "username": self.username,
+            "email": self.email,
+            "role_name": self.role_name(),
+            "role_id": self.role_id,
+            "is_active": self.is_active
         }
+        return serialized
