@@ -164,8 +164,8 @@ async def refresh(
             refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
         )
         token_data = TokenPayload(**payload)
-        if payload.get("type") != "refresh" or not token_data.jti or not token_data.sub:
-            raise HTTPException(status_code=401, detail="Invalid token type or missing JTI/sub")
+        if payload.get("type") != "refresh" or not token_data.jti or not token_data.sub or not token_data.exp:
+            raise HTTPException(status_code=401, detail="Invalid token type or missing JTI/sub/exp")
         
         # Check denylist
         result = await db.execute(
@@ -250,7 +250,7 @@ async def logout(
                 refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
             )
             token_data = TokenPayload(**payload)
-            if payload.get("type") == "refresh" and token_data.jti and token_data.sub:
+            if payload.get("type") == "refresh" and token_data.jti and token_data.sub and token_data.exp:
                 from datetime import datetime, timezone
                 try:
                     denylist_entry = TokenDenylist(
