@@ -30,9 +30,17 @@ const authStoreCreator: StateCreator<AuthState> = (set) => ({
   isLoading: true,
   setAuth: (user) => set({ user, isAuthenticated: !!user, isLoading: false }),
   setLoading: (loading) => set({ isLoading: loading }),
-  logout: () => {
-    Cookies.remove('token');
-    set({ user: null, isAuthenticated: false, isLoading: false });
+  logout: async () => {
+    try {
+      // We import apiClient dynamically to avoid circular dependencies if any
+      const { default: apiClient } = await import('@/lib/axios');
+      await apiClient.post('/auth/logout');
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      Cookies.remove('token');
+      set({ user: null, isAuthenticated: false, isLoading: false });
+    }
   },
 });
 
