@@ -1,20 +1,36 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, BackgroundTasks
+from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 from typing import Any
+from jose import jwt, JWTError
 
 from app.api import deps
 from app.core import security
 from app.core.config import settings
-from app.db.session import get_db
+from sqlalchemy.exc import IntegrityError
+from app.db.session import get_db, AsyncSessionLocal
 from app.models.user import User
 from app.models.role import Role
+from app.models.token_denylist import TokenDenylist
 from app.schemas.user import User as UserSchema, UserCreate, UserUpdate
-from app.schemas.token import Token
+from app.schemas.token import Token, TokenPayload
 
 router = APIRouter()
+
+async def cleanup_expired_tokens():
+    from datetime import datetime, timezone
+    async with AsyncSessionLocal() as db:
+        try:
+            now = datetime.now(timezone.utc)
+            await db.execute(delete(TokenDenylist).where(TokenDenylist.exp < now))
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            from app.core.logger import logger
+            logger.error(f"Error cleaning up expired tokens: {e}")
 
 async def get_role_by_name(db: AsyncSession, name: str) -> Role:
     result = await db.execute(select(Role).where(Role.name == name))
@@ -101,7 +117,7 @@ async def register(
             detail=f"Internal Server Error during registration: {str(e)}"
         )
 
-@router.post("/login", response_model=Token)
+@router.post("/login")
 async def login(
     db: AsyncSession = Depends(get_db),
     form_data: OAuth2PasswordRequestForm = Depends()
@@ -113,10 +129,154 @@ async def login(
     elif not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     
-    return {
-        "access_token": security.create_access_token(user.id),
+    access_token = security.create_access_token(user.id)
+    refresh_token = security.create_refresh_token(user.id)
+    
+    response = JSONResponse({
+        "access_token": access_token,
         "token_type": "bearer",
-    }
+    })
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=not settings.DEBUG,
+        samesite="lax",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        path="/api/auth",
+    )
+    
+    return response
+
+@router.post("/refresh", response_model=Token)
+async def refresh(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
+) -> Any:
+    background_tasks.add_task(cleanup_expired_tokens)
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Refresh token missing")
+    
+    try:
+        payload = jwt.decode(
+            refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+        )
+        token_data = TokenPayload(**payload)
+        if payload.get("type") != "refresh" or not token_data.jti or not token_data.sub:
+            raise HTTPException(status_code=401, detail="Invalid token type or missing JTI/sub")
+        
+        # Check denylist
+        result = await db.execute(
+            select(TokenDenylist).where(TokenDenylist.jti == token_data.jti)
+        )
+        if result.scalar_one_or_none():
+            response = JSONResponse(status_code=401, content={"detail": "Token has been revoked"})
+            response.delete_cookie("refresh_token", path="/api/auth")
+            return response
+    except jwt.ExpiredSignatureError:
+        response = JSONResponse(status_code=401, content={"detail": "Refresh token expired"})
+        response.delete_cookie("refresh_token", path="/api/auth")
+        return response
+    except (JWTError, Exception):
+        response = JSONResponse(status_code=401, content={"detail": "Could not validate credentials"})
+        response.delete_cookie("refresh_token", path="/api/auth")
+        return response
+    
+    result = await db.execute(select(User).where(User.id == token_data.sub))
+    user = result.scalar_one_or_none()
+    if not user:
+        response = JSONResponse(status_code=404, content={"detail": "User not found"})
+        response.delete_cookie("refresh_token", path="/api/auth")
+        return response
+    if not user.is_active:
+        response = JSONResponse(status_code=400, content={"detail": "Inactive user"})
+        response.delete_cookie("refresh_token", path="/api/auth")
+        return response
+    
+    new_access_token = security.create_access_token(user.id)
+    new_refresh_token = security.create_refresh_token(user.id)
+    
+    # Revoke old jti
+    from datetime import datetime, timezone
+    try:
+        denylist_entry = TokenDenylist(
+            jti=token_data.jti,
+            exp=datetime.fromtimestamp(token_data.exp, tz=timezone.utc),
+            user_id=user.id
+        )
+        db.add(denylist_entry)
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        # Already in denylist - likely a race condition or reuse
+        response = JSONResponse(status_code=401, content={"detail": "Token already revoked"})
+        response.delete_cookie("refresh_token", path="/api/auth")
+        return response
+    except Exception as e:
+        await db.rollback()
+        from app.core.logger import logger
+        logger.error(f"Error adding token to denylist: {e}")
+        response = JSONResponse(status_code=401, content={"detail": "Token rotation failed"})
+        response.delete_cookie("refresh_token", path="/api/auth")
+        return response
+    
+    response = JSONResponse({
+        "access_token": new_access_token,
+        "token_type": "bearer",
+    })
+    response.set_cookie(
+        key="refresh_token",
+        value=new_refresh_token,
+        httponly=True,
+        secure=not settings.DEBUG,
+        samesite="lax",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        path="/api/auth",
+    )
+    return response
+
+@router.post("/logout")
+async def logout(
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db)
+):
+    refresh_token = request.cookies.get("refresh_token")
+    if refresh_token:
+        try:
+            payload = jwt.decode(
+                refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+            )
+            token_data = TokenPayload(**payload)
+            if payload.get("type") == "refresh" and token_data.jti and token_data.sub:
+                from datetime import datetime, timezone
+                try:
+                    denylist_entry = TokenDenylist(
+                        jti=token_data.jti,
+                        exp=datetime.fromtimestamp(token_data.exp, tz=timezone.utc),
+                        user_id=token_data.sub
+                    )
+                    db.add(denylist_entry)
+                    await db.commit()
+                except IntegrityError:
+                    await db.rollback()
+                except Exception as e:
+                    await db.rollback()
+                    from app.core.logger import logger
+                    logger.error(f"Logout denylist error: {e}")
+        except Exception:
+            pass
+
+    response.delete_cookie(
+        key="refresh_token",
+        httponly=True,
+        secure=not settings.DEBUG,
+        samesite="lax",
+        path="/api/auth",
+    )
+    return {"detail": "Successfully logged out"}
 
 @router.get("/me", response_model=UserSchema)
 async def read_user_me(
