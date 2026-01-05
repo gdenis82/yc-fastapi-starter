@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useAuthStore } from '@/store/auth-store';
 
 export default function Home() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, isLoading } = useAuthStore();
 
   return (
     <div className="flex flex-col gap-20 pb-20">
@@ -18,7 +18,7 @@ export default function Home() {
           Built with App Router, Tailwind CSS, shadcn/ui, and TanStack Query.
         </p>
         <div className="mt-10 flex items-center justify-center gap-4">
-          {!isAuthenticated && (
+          {!isLoading && !isAuthenticated && (
             <Button size="lg" asChild>
               <Link href="/auth/signup">Get Started</Link>
             </Button>

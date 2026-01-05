@@ -13,7 +13,7 @@ import {
 import { User } from 'lucide-react';
 
 export function Header() {
-  const { user, isAuthenticated, logout } = useAuthStore();
+  const { user, isAuthenticated, logout, isLoading } = useAuthStore();
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -32,36 +32,38 @@ export function Header() {
         </div>
         <div className="flex items-center gap-2">
           <ModeToggle />
-          {isAuthenticated ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon">
-                  <User className="h-5 w-5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem asChild>
-                  <Link href="/profile">Profile</Link>
-                </DropdownMenuItem>
-                {user?.role_obj?.name === 'admin' && (
+          {!isLoading && (
+            isAuthenticated ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon">
+                    <User className="h-5 w-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
                   <DropdownMenuItem asChild>
-                    <Link href="/admin">Admin Panel</Link>
+                    <Link href="/profile">Profile</Link>
                   </DropdownMenuItem>
-                )}
-                <DropdownMenuItem onClick={logout}>
-                  Logout
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" asChild>
-                <Link href="/auth/signin">Sign In</Link>
-              </Button>
-              <Button asChild>
-                <Link href="/auth/signup">Sign Up</Link>
-              </Button>
-            </div>
+                  {user?.role_obj?.name === 'admin' && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/admin">Admin Panel</Link>
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={logout}>
+                    Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" asChild>
+                  <Link href="/auth/signin">Sign In</Link>
+                </Button>
+                <Button asChild>
+                  <Link href="/auth/signup">Sign Up</Link>
+                </Button>
+              </div>
+            )
           )}
         </div>
       </div>
