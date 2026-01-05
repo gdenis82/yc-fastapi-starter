@@ -8,6 +8,8 @@ export interface User {
   name?: string;
   role: string;
   role_id?: number;
+  is_active?: boolean;
+  role_name?: string;
   role_obj?: {
     id: number;
     name: string;
