@@ -38,6 +38,7 @@ services:
       - WATCHPACK_POLLING=true
     depends_on:
       - backend
+    command: npm run dev -- -p 3000 -H 0.0.0.0
 
   db:
     image: postgres:16-alpine
