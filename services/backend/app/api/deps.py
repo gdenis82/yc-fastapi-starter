@@ -13,7 +13,7 @@ from app.models.user import User
 from app.schemas.token import TokenPayload
 
 reusable_oauth2 = OAuth2PasswordBearer(
-    tokenUrl="/auth/login"
+    tokenUrl="/api/auth/login"
 )
 
 async def get_current_user(
