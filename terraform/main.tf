@@ -449,8 +449,10 @@ resource "yandex_mdb_redis_cluster" "redis" {
 
   config {
     password = random_password.redis_password.result
-    version  = "7.2" # Using Redis version, as Valkey might not be supported via this resource or needs specific setup
+    version  = "8.0-valkey" # Using Valkey version as 7.2 is deprecated
   }
+
+  tls_enabled = true
 
   resources {
     resource_preset_id = "hm3-c2-m8"
