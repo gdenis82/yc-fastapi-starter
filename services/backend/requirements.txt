@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
 gunicorn
+redis>=5.0.1
 sqlalchemy
 asyncpg
 alembic
