@@ -12,6 +12,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
       - DB_HOST=db
@@ -19,6 +21,8 @@ services:
       - DB_PASSWORD=postgres
       - DB_NAME=postgres
       - SECRET_KEY=secret-key
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
 
   frontend:
     build:
@@ -63,6 +67,14 @@ services:
       - db
     ports:
       - "8089:8080"
+    networks:
+      - common-network
+
+  redis:
+    image: valkey/valkey:8.0-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
     networks:
       - common-network
 
