@@ -24,7 +24,13 @@ async def reset_password(
 ) -> Any:
     """
     Reset password using token. 
-    Note: Implementation of token validation logic should be here.
+    TODO: 
+    1. Validate the reset token (should be a short-lived JWT with specific type).
+    2. Check if token is in Redis denylist.
+    3. Decode sub (user_id) from token.
+    4. Fetch user from DB.
+    5. Hash new password and update user in DB.
+    6. Revoke the reset token (add to denylist).
     """
     # Placeholder for actual reset logic
     return {"message": "Password updated successfully"}
