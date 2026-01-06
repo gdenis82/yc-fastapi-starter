@@ -16,14 +16,20 @@ class Settings(BaseSettings):
 
     @property
     def DATABASE_URL(self) -> str:
-        # Note: We return a string that can be parsed by make_url or used in create_async_engine
-        # But we will use the components directly in session.py to avoid parsing issues.
         return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
     
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
+    # Redis settings
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
+    REDIS_PASSWORD: str | None = None
+    REDIS_CONNECT_TIMEOUT: float = 1.0
+    REDIS_READ_TIMEOUT: float = 1.0
+
     CORS_ORIGINS: list[str] = [
         "http://localhost:3000",
         "https://tryout.site",
