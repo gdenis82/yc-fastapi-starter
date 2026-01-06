@@ -43,6 +43,7 @@ async def redis_check():
     from app.core.redis import redis_client
     try:
         ping = await redis_client.ping()
+        logger.debug(f"Redis ping result: {ping}")
         return {"status": "ok", "redis_ping": ping}
     except Exception as e:
         logger.error(f"Redis connection error: {e}")
