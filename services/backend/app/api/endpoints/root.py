@@ -6,18 +6,38 @@ from app.db.session import get_db
 import os
 import psycopg2
 
-router = APIRouter()
+router = APIRouter(
+    tags=["root"],
+    responses={404: {"description": "Not found"}},
+)
 
-@router.get("/")
+# Описание тега: Базовые операции, проверка состояния системы и отладочная информация.
+
+@router.get(
+    "/",
+    summary="Приветствие",
+    description="Возвращает приветственное сообщение с названием проекта.",
+    response_description="JSON с приветствием."
+)
 async def read_root():
     logger.debug("Root endpoint called")
     return {"message": f"Hello from {settings.PROJECT_NAME}!"}
 
-@router.get("/health")
+@router.get(
+    "/health",
+    summary="Проверка состояния",
+    description="Простой эндпоинт для проверки того, что приложение запущено и отвечает на запросы. Используется Liveness и Readiness пробами в Kubernetes.",
+    response_description="Статус 'ok'."
+)
 async def health():
     return {"status": "ok"}
 
-@router.get("/db-check")
+@router.get(
+    "/db-check",
+    summary="Проверка БД",
+    description="Проверяет соединение с базой данных PostgreSQL и возвращает версию сервера.",
+    response_description="Статус подключения и версия БД."
+)
 async def db_check(db: AsyncSession = Depends(get_db)):
     if not settings.DATABASE_URL:
         return {"status": "error", "message": "DATABASE_URL is not set"}
@@ -32,13 +52,23 @@ async def db_check(db: AsyncSession = Depends(get_db)):
         logger.error(f"Database connection error: {e}")
         return {"status": "error", "message": str(e)}
 
-@router.get("/pod")
+@router.get(
+    "/pod",
+    summary="Имя пода",
+    description="Возвращает имя текущего пода Kubernetes (из переменной окружения POD_NAME). Полезно для отладки балансировки нагрузки.",
+    response_description="Имя пода или 'local-development'."
+)
 async def get_pod_name():
     pod_name = os.getenv("POD_NAME", "local-development")
     logger.debug(f"Pod name requested: {pod_name}")
     return {"pod_name": pod_name}
 
-@router.get("/redis-check")
+@router.get(
+    "/redis-check",
+    summary="Проверка Redis",
+    description="Проверяет доступность Redis, выполняя команду PING.",
+    response_description="Результат PING или сообщение об ошибке."
+)
 async def redis_check():
     from app.core.redis import redis_client
     try:
