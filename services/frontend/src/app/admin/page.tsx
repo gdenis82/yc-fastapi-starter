@@ -55,6 +55,7 @@ export default function AdminPage() {
       return response.data;
     },
     enabled: !!user && user.role_obj?.name === 'admin',
+    staleTime: 0,
   });
 
   if (!user || user.role_obj?.name !== 'admin') {

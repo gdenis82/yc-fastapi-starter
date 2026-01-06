@@ -13,11 +13,13 @@ import { useEffect } from 'react';
 import apiClient from '@/lib/axios';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 
 type ProfileForm = z.infer<typeof profileSchema>;
 
 export default function ProfilePage() {
   const { user, setAuth } = useAuthStore();
+  const queryClient = useQueryClient();
   
   const {
     register,
@@ -50,6 +52,7 @@ export default function ProfilePage() {
       );
       const response = await apiClient.patch('/auth/me', filteredData);
       setAuth(response.data);
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       toast.success('Profile updated successfully');
       reset({ ...response.data, password: '' });
     } catch (error) {
