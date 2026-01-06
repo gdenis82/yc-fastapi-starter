@@ -1,4 +1,3 @@
-from typing import Generator, Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
@@ -8,6 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.logger import logger
 from app.core.config import settings
+from app.core.redis import redis_client
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.token import TokenPayload
@@ -38,6 +38,25 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
+    # Check denylist in Redis
+    if token_data.jti:
+        try:
+            is_revoked = await redis_client.exists(f"denylist:{token_data.jti}")
+            if is_revoked:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token has been revoked",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            # Redis is down
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Service temporarily unavailable, please try later"
+            )
+
     if token_data.sub is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
