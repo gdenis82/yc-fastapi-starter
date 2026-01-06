@@ -121,6 +121,8 @@ async def register(
             detail=f"Internal Server Error during registration: {str(e)}"
         )
 
+from fastapi_limiter.depends import RateLimiter
+
 @router.post(
     "/login",
     tags=["auth"],
@@ -131,25 +133,40 @@ async def register(
         "При ошибке возвращается 401 с пояснением: неверный пароль, пользователь не найден и т.д."
     ),
     response_description="Успешная аутентификация. Токен действителен 24 часа.",
+    dependencies=[Depends(RateLimiter(times=5, seconds=60))]
 )
 async def login(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     form_data: OAuth2PasswordRequestForm = Depends()
 ) -> Any:
+    from app.core.logger import logger
+    
+    ip = request.client.host if request.client else "unknown"
+    ua = request.headers.get("user-agent", "unknown")
+    
     result = await db.execute(select(User).where(User.email == form_data.username))
     user = result.scalar_one_or_none()
+    
     if not user or not security.verify_password(form_data.password, user.hashed_password):
+        logger.warning(f"Failed login attempt for email: {form_data.username} from IP: {ip}, UA: {ua}")
         raise HTTPException(status_code=400, detail="Incorrect email or password")
     elif not user.is_active:
+        logger.warning(f"Login attempt for inactive user: {form_data.username} from IP: {ip}, UA: {ua}")
         raise HTTPException(status_code=400, detail="Inactive user")
+    
+    logger.info(f"Successful login for user: {user.email} from IP: {ip}, UA: {ua}")
     
     access_token = security.create_access_token(user.id)
     refresh_token = security.create_refresh_token(user.id)
     
     response = JSONResponse({
         "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
     })
+    # We still set the cookie for backward compatibility or browser-only clients,
+    # but the recommendation is to use Authorization header for CSRF protection.
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
@@ -173,7 +190,16 @@ async def refresh(
     request: Request,
     db: AsyncSession = Depends(get_db)
 ) -> Any:
-    refresh_token = request.cookies.get("refresh_token")
+    # Try to get refresh token from Authorization header first (for CSRF protection)
+    auth_header = request.headers.get("Authorization")
+    refresh_token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        refresh_token = auth_header.split(" ")[1]
+    
+    # Fallback to cookie if not in header
+    if not refresh_token:
+        refresh_token = request.cookies.get("refresh_token")
+    
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh token missing")
     
@@ -233,6 +259,7 @@ async def refresh(
     
     response = JSONResponse({
         "access_token": new_access_token,
+        "refresh_token": new_refresh_token,
         "token_type": "bearer",
     })
     response.set_cookie(
