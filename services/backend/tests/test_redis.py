@@ -6,13 +6,12 @@ client = TestClient(app)
 
 def test_redis_check():
     response = client.get("/api/redis-check")
-    # Мы не можем гарантировать, что Redis доступен в среде запуска тестов, 
-    # но мы можем проверить, что эндпоинт возвращает ожидаемую структуру.
     assert response.status_code == 200
     data = response.json()
     assert "status" in data
-    if data["status"] == "ok":
-        assert "redis_ping" in data
-        assert data["redis_ping"] is True
-    else:
-        assert "message" in data
+    
+    # Тест должен падать, если Redis не доступен, 
+    # чтобы CI/CD сигнализировал о проблемах с конфигурацией или связью.
+    assert data["status"] == "ok", f"Redis check failed: {data.get('message')}"
+    assert "redis_ping" in data
+    assert data["redis_ping"] is True
