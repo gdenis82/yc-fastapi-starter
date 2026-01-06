@@ -17,7 +17,10 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(
         title="FastAPI Kubernetes Project",
-        lifespan=lifespan
+        lifespan=lifespan,
+        docs_url="/api/docs",
+        redoc_url="/api/redoc",
+        openapi_url="/api/openapi.json",
     )
     
     @app.middleware("http")
