@@ -8,9 +8,15 @@ from app.models.user import User
 from app.schemas.user import UserUpdate
 from app.core import security
 
-router = APIRouter()
+router = APIRouter(tags=["auth"])
 
-@router.post("/reset-password", response_model=Any)
+@router.post(
+    "/reset-password",
+    response_model=Any,
+    summary="Сброс пароля",
+    description="Позволяет сбросить пароль пользователя с использованием токена восстановления.",
+    response_description="Сообщение об успешном обновлении пароля."
+)
 async def reset_password(
     token: str,
     new_password: UserUpdate, # Assuming it contains the new password
