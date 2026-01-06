@@ -6,6 +6,9 @@ from sqlalchemy.engine import URL
 from app.core.config import settings
 
 def get_engine_settings():
+    if settings.DATABASE_URL:
+        return settings.DATABASE_URL, {}
+    
     # Construct URL object directly to avoid parsing/escaping issues
     url = URL.create(
         drivername="postgresql+asyncpg",
