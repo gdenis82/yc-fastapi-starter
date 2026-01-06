@@ -61,5 +61,25 @@ spec:
                   key: db-ssl-mode
             - name: DB_SSL_ROOT_CERT
               value: "/root/.postgresql/root.crt"
+            - name: REDIS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fastapi-chart.fullname" . }}-app-secrets
+                  key: redis-host
+            - name: REDIS_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fastapi-chart.fullname" . }}-app-secrets
+                  key: redis-port
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fastapi-chart.fullname" . }}-app-secrets
+                  key: redis-password
+            - name: REDIS_SSL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "fastapi-chart.fullname" . }}-app-secrets
+                  key: redis-ssl
   backoffLimit: 3
 {{- end }}
