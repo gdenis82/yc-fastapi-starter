@@ -13,11 +13,9 @@ class Settings(BaseSettings):
     DB_NAME: str = "postgres"
     DB_SSL_MODE: str = "disable"
     DB_SSL_ROOT_CERT: str | None = "/root/.postgresql/root.crt"
-    DATABASE_URL: str | None = None
 
-    def get_database_url(self) -> str:
-        if self.DATABASE_URL:
-            return self.DATABASE_URL
+    @property
+    def DATABASE_URL(self) -> str:
         return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
     
     ALGORITHM: str = "HS256"
