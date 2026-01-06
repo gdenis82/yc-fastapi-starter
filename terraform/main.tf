@@ -518,7 +518,7 @@ resource "yandex_lockbox_secret_version" "app-secrets-v1" {
   }
   entries {
     key        = "redis_port"
-    text_value = "6379"
+    text_value = "6380"
   }
   entries {
     key        = "redis_password"
