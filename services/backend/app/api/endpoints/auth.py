@@ -22,8 +22,6 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-# Описание тега: Аутентификация, регистрация пользователей и управление токенами доступа.
-
 async def get_role_by_name(db: AsyncSession, name: str) -> Role:
     result = await db.execute(select(Role).where(Role.name == name))
     return result.scalar_one_or_none()
@@ -162,17 +160,16 @@ async def login(
     
     response = JSONResponse({
         "access_token": access_token,
-        "refresh_token": refresh_token,
         "token_type": "bearer",
     })
-    # We still set the cookie for backward compatibility or browser-only clients,
-    # but the recommendation is to use Authorization header for CSRF protection.
+    # We set the cookie for browser clients.
+    # For CSRF protection, we use samesite="strict" and httponly=True.
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
         secure=not settings.DEBUG,
-        samesite="lax",
+        samesite="strict",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
         path="/api/auth",
     )
@@ -190,7 +187,7 @@ async def refresh(
     request: Request,
     db: AsyncSession = Depends(get_db)
 ) -> Any:
-    # Try to get refresh token from Authorization header first (for CSRF protection)
+    # Try to get refresh token from Authorization header first (preferred for CSRF protection)
     auth_header = request.headers.get("Authorization")
     refresh_token = None
     if auth_header and auth_header.startswith("Bearer "):
@@ -199,6 +196,24 @@ async def refresh(
     # Fallback to cookie if not in header
     if not refresh_token:
         refresh_token = request.cookies.get("refresh_token")
+        if refresh_token:
+            # Basic CSRF protection for cookie fallback: check Origin or Referer
+            origin = request.headers.get("origin")
+            referer = request.headers.get("referer")
+            
+            # Simple check: at least one must be present and match our allowed origins if in production
+            if not settings.DEBUG:
+                allowed = False
+                for allowed_origin in settings.CORS_ORIGINS:
+                    if (origin and origin.startswith(allowed_origin)) or \
+                       (referer and referer.startswith(allowed_origin)):
+                        allowed = True
+                        break
+                if not allowed:
+                    raise HTTPException(
+                        status_code=403, 
+                        detail="CSRF protection: Invalid Origin or Referer for cookie-based refresh"
+                    )
     
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh token missing")
@@ -216,7 +231,7 @@ async def refresh(
             is_revoked = await redis_client.exists(f"denylist:{token_data.jti}")
             if is_revoked:
                 response = JSONResponse(status_code=401, content={"detail": "Token has been revoked"})
-                response.delete_cookie("refresh_token", path="/api/auth")
+                response.delete_cookie("refresh_token", path="/api/auth", samesite="strict")
                 return response
         except Exception:
             # Redis is down
@@ -224,24 +239,24 @@ async def refresh(
 
     except jwt.ExpiredSignatureError:
         response = JSONResponse(status_code=401, content={"detail": "Refresh token expired"})
-        response.delete_cookie("refresh_token", path="/api/auth")
+        response.delete_cookie("refresh_token", path="/api/auth", samesite="strict")
         return response
     except HTTPException:
         raise
     except (JWTError, Exception):
         response = JSONResponse(status_code=401, content={"detail": "Could not validate credentials"})
-        response.delete_cookie("refresh_token", path="/api/auth")
+        response.delete_cookie("refresh_token", path="/api/auth", samesite="strict")
         return response
     
     result = await db.execute(select(User).where(User.id == token_data.sub))
     user = result.scalar_one_or_none()
     if not user:
         response = JSONResponse(status_code=404, content={"detail": "User not found"})
-        response.delete_cookie("refresh_token", path="/api/auth")
+        response.delete_cookie("refresh_token", path="/api/auth", samesite="strict")
         return response
     if not user.is_active:
         response = JSONResponse(status_code=400, content={"detail": "Inactive user"})
-        response.delete_cookie("refresh_token", path="/api/auth")
+        response.delete_cookie("refresh_token", path="/api/auth", samesite="strict")
         return response
     
     new_access_token = security.create_access_token(user.id)
@@ -259,7 +274,6 @@ async def refresh(
     
     response = JSONResponse({
         "access_token": new_access_token,
-        "refresh_token": new_refresh_token,
         "token_type": "bearer",
     })
     response.set_cookie(
@@ -267,7 +281,7 @@ async def refresh(
         value=new_refresh_token,
         httponly=True,
         secure=not settings.DEBUG,
-        samesite="lax",
+        samesite="strict",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
         path="/api/auth",
     )
@@ -306,7 +320,7 @@ async def logout(
         key="refresh_token",
         httponly=True,
         secure=not settings.DEBUG,
-        samesite="lax",
+        samesite="strict",
         path="/api/auth",
     )
     return {"detail": "Successfully logged out"}
