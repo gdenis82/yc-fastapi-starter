@@ -10,9 +10,20 @@ from app.models.user import User
 from app.models.role import Role
 from app.schemas.user import User as UserSchema
 
-router = APIRouter()
+router = APIRouter(
+    tags=["admin"],
+    responses={404: {"description": "Not found"}},
+)
 
-@router.get("/users", response_model=Any)
+# Описание тега: Панель администратора: управление пользователями и системные настройки.
+
+@router.get(
+    "/users",
+    response_model=Any,
+    summary="Список пользователей",
+    description="Возвращает список всех пользователей системы с поддержкой фильтрации по имени, роли, а также с пагинацией и сортировкой. Доступно только администраторам.",
+    response_description="Список пользователей и общее количество записей."
+)
 async def read_users(
     db: AsyncSession = Depends(get_db),
     page: int = Query(1, ge=1),
