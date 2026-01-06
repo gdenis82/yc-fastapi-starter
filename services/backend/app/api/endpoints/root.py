@@ -19,9 +19,6 @@ async def health():
 
 @router.get("/db-check")
 async def db_check(db: AsyncSession = Depends(get_db)):
-    if not settings.DATABASE_URL:
-        return {"status": "error", "message": "DATABASE_URL is not set"}
-    
     try:
         # Check using SQLAlchemy session
         from sqlalchemy import text
