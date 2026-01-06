@@ -441,6 +441,40 @@ resource "random_password" "db_password" {
   special = true
 }
 
+# --- Valkey Cluster (Managed Service for Valkey) ---
+resource "yandex_mdb_valkey_cluster" "valkey" {
+  name        = "fastapi-valkey"
+  environment = "PRESTABLE"
+  network_id  = yandex_vpc_network.k8s-network.id
+
+  config {
+    password = random_password.valkey_password.result
+    version  = "8.0"
+  }
+
+  resources {
+    resource_preset_id = "hm3-c2-m8"
+    disk_type_id       = "network-ssd"
+    disk_size          = 16
+  }
+
+  host {
+    zone      = "ru-central1-a"
+    subnet_id = yandex_vpc_subnet.k8s-subnet-a.id
+    assign_public_ip = true
+  }
+
+  maintenance_window {
+    type = "ANYTIME"
+  }
+}
+
+# --- Password for Valkey ---
+resource "random_password" "valkey_password" {
+  length  = 16
+  special = false # Redis/Valkey passwords sometimes have issues with special chars in connection strings if not escaped
+}
+
 # --- Lockbox Secret Version (Actual Payload) ---
 resource "yandex_lockbox_secret_version" "app-secrets-v1" {
   secret_id = yandex_lockbox_secret.app-secrets.id
@@ -475,6 +509,22 @@ resource "yandex_lockbox_secret_version" "app-secrets-v1" {
   entries {
     key        = "db_ssl_mode"
     text_value = "verify-full"
+  }
+  entries {
+    key        = "redis_host"
+    text_value = yandex_mdb_valkey_cluster.valkey.host[0].fqdn
+  }
+  entries {
+    key        = "redis_port"
+    text_value = "6379"
+  }
+  entries {
+    key        = "redis_password"
+    text_value = random_password.valkey_password.result
+  }
+  entries {
+    key        = "redis_ssl"
+    text_value = "True"
   }
 }
 
