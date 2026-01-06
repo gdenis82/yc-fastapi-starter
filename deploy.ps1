@@ -145,10 +145,15 @@ $DB_PASSWORD = Get-LockboxEntry "db_password"
 $DB_NAME = Get-LockboxEntry "db_name"
 $DB_SSL_MODE = Get-LockboxEntry "db_ssl_mode"
 
+$REDIS_HOST = Get-LockboxEntry "redis_host"
+$REDIS_PORT = Get-LockboxEntry "redis_port"
+$REDIS_PASSWORD = Get-LockboxEntry "redis_password"
+$REDIS_SSL = Get-LockboxEntry "redis_ssl"
+
 if (-not $SECRET_KEY_FROM_LOCKBOX) { throw "Failed to fetch SECRET_KEY from Lockbox" }
 
-if (-not $DB_HOST -or -not $DB_USER -or -not $DB_PASSWORD -or -not $DB_NAME) {
-    Write-Host "`n[WARNING] Some individual database variables (db_host, db_user, etc.) are missing in Lockbox!" -ForegroundColor Yellow
+if (-not $DB_HOST -or -not $DB_USER -or -not $DB_PASSWORD -or -not $DB_NAME -or -not $REDIS_HOST) {
+    Write-Host "`n[WARNING] Some individual database or redis variables are missing in Lockbox!" -ForegroundColor Yellow
     Write-Host "New configuration requires these separate variables to handle special characters in passwords." -ForegroundColor Yellow
     Write-Host "Would you like to run 'terraform apply' to update Lockbox with separate variables? (y/n)" -ForegroundColor Cyan
     $choice = Read-Host
@@ -164,10 +169,14 @@ if (-not $DB_HOST -or -not $DB_USER -or -not $DB_PASSWORD -or -not $DB_NAME) {
         $DB_PASSWORD = Get-LockboxEntry "db_password"
         $DB_NAME = Get-LockboxEntry "db_name"
         $DB_SSL_MODE = Get-LockboxEntry "db_ssl_mode"
+        $REDIS_HOST = Get-LockboxEntry "redis_host"
+        $REDIS_PORT = Get-LockboxEntry "redis_port"
+        $REDIS_PASSWORD = Get-LockboxEntry "redis_password"
+        $REDIS_SSL = Get-LockboxEntry "redis_ssl"
     }
     
-    if (-not $DB_HOST -or -not $DB_USER -or -not $DB_PASSWORD -or -not $DB_NAME) {
-        throw "Missing database configuration in Lockbox. Please ensure db_host, db_port, db_user, db_password, db_name are present. Run 'terraform apply' to populate them."
+    if (-not $DB_HOST -or -not $DB_USER -or -not $DB_PASSWORD -or -not $DB_NAME -or -not $REDIS_HOST) {
+        throw "Missing database or redis configuration in Lockbox. Run 'terraform apply' to populate them."
     }
 }
 
@@ -184,6 +193,10 @@ kubectl create secret generic "$RELEASE_NAME-app-secrets" `
     --from-literal=db-password="$DB_PASSWORD" `
     --from-literal=db-name="$DB_NAME" `
     --from-literal=db-ssl-mode="$DB_SSL_MODE" `
+    --from-literal=redis-host="$REDIS_HOST" `
+    --from-literal=redis-port="$REDIS_PORT" `
+    --from-literal=redis-password="$REDIS_PASSWORD" `
+    --from-literal=redis-ssl="$REDIS_SSL" `
     --dry-run=client -o yaml | kubectl apply -f -
 
 Write-Host "--- Running Database Migrations ---" -ForegroundColor Cyan
