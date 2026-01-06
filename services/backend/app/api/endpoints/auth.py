@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from typing import Any
 from jose import jwt, JWTError
@@ -10,27 +10,14 @@ from jose import jwt, JWTError
 from app.api import deps
 from app.core import security
 from app.core.config import settings
-from sqlalchemy.exc import IntegrityError
-from app.db.session import get_db, AsyncSessionLocal
+from app.core.redis import redis_client
+from app.db.session import get_db
 from app.models.user import User
 from app.models.role import Role
-from app.models.token_denylist import TokenDenylist
 from app.schemas.user import User as UserSchema, UserCreate, UserUpdate
 from app.schemas.token import Token, TokenPayload
 
 router = APIRouter()
-
-async def cleanup_expired_tokens():
-    from datetime import datetime, timezone
-    async with AsyncSessionLocal() as db:
-        try:
-            now = datetime.now(timezone.utc)
-            await db.execute(delete(TokenDenylist).where(TokenDenylist.exp < now))
-            await db.commit()
-        except Exception as e:
-            await db.rollback()
-            from app.core.logger import logger
-            logger.error(f"Error cleaning up expired tokens: {e}")
 
 async def get_role_by_name(db: AsyncSession, name: str) -> Role:
     result = await db.execute(select(Role).where(Role.name == name))
@@ -151,10 +138,8 @@ async def login(
 @router.post("/refresh", response_model=Token)
 async def refresh(
     request: Request,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ) -> Any:
-    background_tasks.add_task(cleanup_expired_tokens)
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh token missing")
@@ -167,18 +152,23 @@ async def refresh(
         if payload.get("type") != "refresh" or not token_data.jti or not token_data.sub or not token_data.exp:
             raise HTTPException(status_code=401, detail="Invalid token type or missing JTI/sub/exp")
         
-        # Check denylist
-        result = await db.execute(
-            select(TokenDenylist).where(TokenDenylist.jti == token_data.jti)
-        )
-        if result.scalar_one_or_none():
-            response = JSONResponse(status_code=401, content={"detail": "Token has been revoked"})
-            response.delete_cookie("refresh_token", path="/api/auth")
-            return response
+        # Check denylist in Redis
+        try:
+            is_revoked = await redis_client.exists(f"denylist:{token_data.jti}")
+            if is_revoked:
+                response = JSONResponse(status_code=401, content={"detail": "Token has been revoked"})
+                response.delete_cookie("refresh_token", path="/api/auth")
+                return response
+        except Exception:
+            # Redis is down
+            raise HTTPException(status_code=503, detail="Service temporarily unavailable, please try later")
+
     except jwt.ExpiredSignatureError:
         response = JSONResponse(status_code=401, content={"detail": "Refresh token expired"})
         response.delete_cookie("refresh_token", path="/api/auth")
         return response
+    except HTTPException:
+        raise
     except (JWTError, Exception):
         response = JSONResponse(status_code=401, content={"detail": "Could not validate credentials"})
         response.delete_cookie("refresh_token", path="/api/auth")
@@ -198,29 +188,15 @@ async def refresh(
     new_access_token = security.create_access_token(user.id)
     new_refresh_token = security.create_refresh_token(user.id)
     
-    # Revoke old jti
+    # Revoke old jti in Redis
     from datetime import datetime, timezone
     try:
-        denylist_entry = TokenDenylist(
-            jti=token_data.jti,
-            exp=datetime.fromtimestamp(token_data.exp, tz=timezone.utc),
-            user_id=user.id
-        )
-        db.add(denylist_entry)
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
-        # Already in denylist - likely a race condition or reuse
-        response = JSONResponse(status_code=401, content={"detail": "Token already revoked"})
-        response.delete_cookie("refresh_token", path="/api/auth")
-        return response
-    except Exception as e:
-        await db.rollback()
-        from app.core.logger import logger
-        logger.error(f"Error adding token to denylist: {e}")
-        response = JSONResponse(status_code=401, content={"detail": "Token rotation failed"})
-        response.delete_cookie("refresh_token", path="/api/auth")
-        return response
+        ttl = int(token_data.exp - datetime.now(timezone.utc).timestamp())
+        if ttl > 0:
+            await redis_client.set(f"denylist:{token_data.jti}", user.id, ex=ttl)
+    except Exception:
+        # Redis is down
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable, please try later")
     
     response = JSONResponse({
         "access_token": new_access_token,
@@ -240,8 +216,7 @@ async def refresh(
 @router.post("/logout")
 async def logout(
     request: Request,
-    response: Response,
-    db: AsyncSession = Depends(get_db)
+    response: Response
 ):
     refresh_token = request.cookies.get("refresh_token")
     if refresh_token:
@@ -253,19 +228,12 @@ async def logout(
             if payload.get("type") == "refresh" and token_data.jti and token_data.sub and token_data.exp:
                 from datetime import datetime, timezone
                 try:
-                    denylist_entry = TokenDenylist(
-                        jti=token_data.jti,
-                        exp=datetime.fromtimestamp(token_data.exp, tz=timezone.utc),
-                        user_id=token_data.sub
-                    )
-                    db.add(denylist_entry)
-                    await db.commit()
-                except IntegrityError:
-                    await db.rollback()
-                except Exception as e:
-                    await db.rollback()
-                    from app.core.logger import logger
-                    logger.error(f"Logout denylist error: {e}")
+                    ttl = int(token_data.exp - datetime.now(timezone.utc).timestamp())
+                    if ttl > 0:
+                        await redis_client.set(f"denylist:{token_data.jti}", token_data.sub, ex=ttl)
+                except Exception:
+                    # Redis is down, but we continue logout (clear cookie)
+                    pass
         except Exception:
             pass
 
