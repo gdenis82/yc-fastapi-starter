@@ -19,6 +19,9 @@ async def health():
 
 @router.get("/db-check")
 async def db_check(db: AsyncSession = Depends(get_db)):
+    if not settings.DATABASE_URL:
+        return {"status": "error", "message": "DATABASE_URL is not set"}
+    
     try:
         # Check using SQLAlchemy session
         from sqlalchemy import text
@@ -29,6 +32,12 @@ async def db_check(db: AsyncSession = Depends(get_db)):
         logger.error(f"Database connection error: {e}")
         return {"status": "error", "message": str(e)}
 
+@router.get("/pod")
+async def get_pod_name():
+    pod_name = os.getenv("POD_NAME", "local-development")
+    logger.debug(f"Pod name requested: {pod_name}")
+    return {"pod_name": pod_name}
+
 @router.get("/redis-check")
 async def redis_check():
     from app.core.redis import redis_client
@@ -38,9 +47,3 @@ async def redis_check():
     except Exception as e:
         logger.error(f"Redis connection error: {e}")
         return {"status": "error", "message": str(e)}
-
-@router.get("/pod")
-async def get_pod_name():
-    pod_name = os.getenv("POD_NAME", "local-development")
-    logger.debug(f"Pod name requested: {pod_name}")
-    return {"pod_name": pod_name}
