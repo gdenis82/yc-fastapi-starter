@@ -94,6 +94,10 @@ deploy-to-k8s:
     - DB_PASSWORD=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "db_password") | .text_value')
     - DB_NAME=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "db_name") | .text_value')
     - DB_SSL_MODE=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "db_ssl_mode") | .text_value')
+    - REDIS_HOST=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "redis_host") | .text_value')
+    - REDIS_PORT=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "redis_port") | .text_value')
+    - REDIS_PASSWORD=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "redis_password") | .text_value')
+    - REDIS_SSL=$(echo $PAYLOAD | jq -r '.entries[] | select(.key == "redis_ssl") | .text_value')
     - kubectl create secret generic "$RELEASE_NAME-app-secrets" 
       --from-literal=secret-key="$SECRET_KEY" 
       --from-literal=db-host="$DB_HOST" 
@@ -102,6 +106,10 @@ deploy-to-k8s:
       --from-literal=db-password="$DB_PASSWORD" 
       --from-literal=db-name="$DB_NAME" 
       --from-literal=db-ssl-mode="$DB_SSL_MODE" 
+      --from-literal=redis-host="$REDIS_HOST" 
+      --from-literal=redis-port="$REDIS_PORT" 
+      --from-literal=redis-password="$REDIS_PASSWORD" 
+      --from-literal=redis-ssl="$REDIS_SSL" 
       --dry-run=client -o yaml | kubectl apply -f -
 
     - # Running Database Migrations
