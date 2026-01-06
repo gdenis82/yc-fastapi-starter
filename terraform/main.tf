@@ -441,15 +441,15 @@ resource "random_password" "db_password" {
   special = true
 }
 
-# --- Valkey Cluster (Managed Service for Valkey) ---
-resource "yandex_mdb_valkey_cluster" "valkey" {
-  name        = "fastapi-valkey"
+# --- Redis Cluster (Managed Service for Redis) ---
+resource "yandex_mdb_redis_cluster" "redis" {
+  name        = "fastapi-redis"
   environment = "PRESTABLE"
   network_id  = yandex_vpc_network.k8s-network.id
 
   config {
-    password = random_password.valkey_password.result
-    version  = "8.0"
+    password = random_password.redis_password.result
+    version  = "7.2" # Using Redis version, as Valkey might not be supported via this resource or needs specific setup
   }
 
   resources {
@@ -469,10 +469,10 @@ resource "yandex_mdb_valkey_cluster" "valkey" {
   }
 }
 
-# --- Password for Valkey ---
-resource "random_password" "valkey_password" {
+# --- Password for Redis ---
+resource "random_password" "redis_password" {
   length  = 16
-  special = false # Redis/Valkey passwords sometimes have issues with special chars in connection strings if not escaped
+  special = false
 }
 
 # --- Lockbox Secret Version (Actual Payload) ---
@@ -512,7 +512,7 @@ resource "yandex_lockbox_secret_version" "app-secrets-v1" {
   }
   entries {
     key        = "redis_host"
-    text_value = yandex_mdb_valkey_cluster.valkey.host[0].fqdn
+    text_value = yandex_mdb_redis_cluster.redis.host[0].fqdn
   }
   entries {
     key        = "redis_port"
@@ -520,7 +520,7 @@ resource "yandex_lockbox_secret_version" "app-secrets-v1" {
   }
   entries {
     key        = "redis_password"
-    text_value = random_password.valkey_password.result
+    text_value = random_password.redis_password.result
   }
   entries {
     key        = "redis_ssl"
