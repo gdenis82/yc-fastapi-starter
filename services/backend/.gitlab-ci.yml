@@ -10,26 +10,13 @@ variables:
 backend-test:
   stage: test
   image: python:3.12-slim
-  services:
-    - name: postgres:16-alpine
-      alias: db
-    - name: valkey/valkey:8.0-alpine
-      alias: redis
   variables:
     SECRET_KEY: "test-key-for-ci"
-    DB_HOST: "db"
-    DB_USER: "postgres"
-    DB_PASSWORD: "postgres"
-    DB_NAME: "postgres"
-    REDIS_HOST: "redis"
+    DATABASE_URL: "sqlite:///:memory:"
   script:
     - cd services/backend
     - pip install -r requirements.txt
     - export PYTHONPATH=$PYTHONPATH:.
-    - # Ждем готовности базы данных
-    - apt-get update && apt-get install -y postgresql-client
-    - until pg_isready -h db -U postgres; do echo "waiting for database..."; sleep 2; done
-    - alembic upgrade head
     - python -m pytest
 
 backend-build:
