@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
     REDIS_PASSWORD: str | None = None
+    REDIS_SSL: bool = False
     REDIS_CONNECT_TIMEOUT: float = 1.0
     REDIS_READ_TIMEOUT: float = 1.0
 
