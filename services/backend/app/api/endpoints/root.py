@@ -32,6 +32,16 @@ async def db_check(db: AsyncSession = Depends(get_db)):
         logger.error(f"Database connection error: {e}")
         return {"status": "error", "message": str(e)}
 
+@router.get("/redis-check")
+async def redis_check():
+    from app.core.redis import redis_client
+    try:
+        ping = await redis_client.ping()
+        return {"status": "ok", "redis_ping": ping}
+    except Exception as e:
+        logger.error(f"Redis connection error: {e}")
+        return {"status": "error", "message": str(e)}
+
 @router.get("/pod")
 async def get_pod_name():
     pod_name = os.getenv("POD_NAME", "local-development")
