@@ -17,13 +17,24 @@ from app.models.role import Role
 from app.schemas.user import User as UserSchema, UserCreate, UserUpdate
 from app.schemas.token import Token, TokenPayload
 
-router = APIRouter()
+router = APIRouter(
+    tags=["auth"],
+    responses={404: {"description": "Not found"}},
+)
+
+# Описание тега: Аутентификация, регистрация пользователей и управление токенами доступа.
 
 async def get_role_by_name(db: AsyncSession, name: str) -> Role:
     result = await db.execute(select(Role).where(Role.name == name))
     return result.scalar_one_or_none()
 
-@router.patch("/me", response_model=UserSchema)
+@router.patch(
+    "/me",
+    response_model=UserSchema,
+    summary="Обновить профиль",
+    description="Позволяет текущему пользователю изменить свой email, имя пользователя или пароль. При смене email проверяется его уникальность.",
+    response_description="Данные обновленного пользователя."
+)
 async def update_user_me(
     *,
     db: AsyncSession = Depends(get_db),
@@ -58,7 +69,13 @@ async def update_user_me(
     )
     return result.scalar_one()
 
-@router.post("/register", response_model=UserSchema)
+@router.post(
+    "/register",
+    response_model=UserSchema,
+    summary="Регистрация",
+    description="Создание новой учётной записи пользователя. По умолчанию назначается роль 'user'.",
+    response_description="Данные созданного пользователя."
+)
 async def register(
     *,
     db: AsyncSession = Depends(get_db),
@@ -104,7 +121,17 @@ async def register(
             detail=f"Internal Server Error during registration: {str(e)}"
         )
 
-@router.post("/login")
+@router.post(
+    "/login",
+    tags=["auth"],
+    summary="Войти в систему",
+    description=(
+        "Принимает логин и пароль, возвращает JWT-токен. "
+        "Пароль передаётся в открытом виде — предполагается, что соединение защищено TLS. "
+        "При ошибке возвращается 401 с пояснением: неверный пароль, пользователь не найден и т.д."
+    ),
+    response_description="Успешная аутентификация. Токен действителен 24 часа.",
+)
 async def login(
     db: AsyncSession = Depends(get_db),
     form_data: OAuth2PasswordRequestForm = Depends()
@@ -135,7 +162,13 @@ async def login(
     
     return response
 
-@router.post("/refresh", response_model=Token)
+@router.post(
+    "/refresh",
+    response_model=Token,
+    summary="Обновить токен доступа",
+    description="Использует refresh_token из кук для получения нового access_token. Старый refresh_token аннулируется и заносится в denylist.",
+    response_description="Новый токен доступа."
+)
 async def refresh(
     request: Request,
     db: AsyncSession = Depends(get_db)
@@ -213,7 +246,12 @@ async def refresh(
     )
     return response
 
-@router.post("/logout")
+@router.post(
+    "/logout",
+    summary="Выйти из системы",
+    description="Аннулирует текущий сеанс, удаляя refresh_token из кук и добавляя его в список отозванных (denylist) в Redis.",
+    response_description="Сообщение об успешном выходе."
+)
 async def logout(
     request: Request,
     response: Response
@@ -246,7 +284,13 @@ async def logout(
     )
     return {"detail": "Successfully logged out"}
 
-@router.get("/me", response_model=UserSchema)
+@router.get(
+    "/me",
+    response_model=UserSchema,
+    summary="Получить профиль",
+    description="Возвращает информацию о текущем авторизованном пользователе.",
+    response_description="Данные текущего пользователя."
+)
 async def read_user_me(
     current_user: User = Depends(deps.get_current_active_user),
 ) -> Any:
